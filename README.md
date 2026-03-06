@@ -35,7 +35,53 @@ An intelligent interview preparation system that uses Artificial Intelligence to
 - Python 3.8 or higher
 - pip package manager
 - Git (optional)
+  
+Usage Guide
+Step 1: Complete Your Profile
+# Fill in the sidebar form:
+- Full Name
+- Email Address
+- Target Role (Software Engineer, Data Scientist, etc.)
+- Experience Level
+- Technical Skills (select multiple)
 
+Step 2: Start Interview
+# Click "START NEW INTERVIEW" button
+# Answer questions naturally
+# Get instant AI feedback
+
+Step 3: Review Performance
+# After 10 questions, receive:
+- Overall score
+- Topic-wise analysis
+- Strengths and weaknesses
+- Personalized learning path
+- Resource recommendations
+
+Detailed Stack
+Frontend:
+  - Framework: Streamlit 1.28
+  - Charts: Plotly 5.17
+  - Animations: CSS3 Keyframes
+  - Icons: Emoji/Unicode
+
+Backend:
+  - Language: Python 3.8+
+  - Web Server: Streamlit built-in
+  - State Management: Session State
+
+AI Algorithms:
+  - Search: Best-First Search
+  - Inference: Forward Chaining
+  - Planning: Goal Stack
+  - Expert System: Rule-based
+
+Data:
+  - Knowledge Base: JSON-like dicts
+  - Reports: JSON export
+  - Session: In-memory
+
+  
 ### Step-by-Step Setup
 
 1. **Clone or create project folder**
@@ -215,3 +261,4 @@ Deliverables:
 ✅ Mobile responsive
 
 ✅ Voice input (optional)
+
