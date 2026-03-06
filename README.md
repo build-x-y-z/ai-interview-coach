@@ -29,7 +29,7 @@ An intelligent interview preparation system that uses Artificial Intelligence to
 - Personalized report generation
 - Strength/weakness analysis
 
-## 🚀 Installation
+🚀 Installation
 
 ### Prerequisites
 - Python 3.8 or higher
@@ -261,4 +261,5 @@ Deliverables:
 ✅ Mobile responsive
 
 ✅ Voice input (optional)
+
 
