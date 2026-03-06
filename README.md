@@ -1,265 +1,76 @@
-# 🎯 AI Interview Coach
+# 🎯 AI Interview Coach — Professional Edition v3.0
 
-An intelligent interview preparation system that uses Artificial Intelligence to conduct mock interviews and provide personalized feedback.
+An intelligent, real-time interview preparation system that simulates a live video call. It uses Artificial Intelligence to conduct mock interviews, featuring live video self-view, actual AI voice synthesis, speech-to-text answering, and personalized evaluation reporting.
 
-## 📋 Table of Contents
-- [Features](#features)
-- [Screenshots](#screenshots)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [AI Concepts Implemented](#ai-concepts-implemented)
-- [Team Members](#team-members)
-- [Contributing](#contributing)
-- [License](#license)
+## ✨ Key Features
 
-## ✨ Features
+### 🎥 Live Video & Voice Experience
+- **Browser-Native Self-View**: See yourself during the interview via a seamless `getUserMedia()` video feed (just like Google Meet/Zoom), operating entirely in-browser with zero latency.
+- **AI Voice Coaching**: The AI interviewer speaks its greetings and questions aloud using cached Text-to-Speech (gTTS) for uninterrupted playback.
+- **Voice Recognition Answers**: Simply click "Unmute" and verbally answer the questions. The system records and accurately transcribes your speech.
 
-### Core Features
-- **Personalized Interviews**: Questions tailored to your target role and experience level
-- **Instant AI Feedback**: Get immediate evaluation of your answers
-- **Performance Analytics**: Track your progress with detailed metrics
-- **Learning Path**: Personalized recommendations for improvement
-- **Voice Input**: Practice with voice answers (optional)
+### 🧠 Core Engine Capabilities
+- **Personalized Interviews**: Questions adapt dynamically to your target role (e.g., Software Engineer, Data Scientist) and experience level.
+- **Heuristic Question Selection**: Uses Best-First Search to ensure questions cover diverse topics, adapt to your difficulty level, and avoid repetition.
+- **Instant Logic-Based Evaluation**: Answer evaluation powered by Forward Chaining logic rules that scan for exact keywords, underlying concepts, and logical completeness.
+- **Comprehensive Analytics**: A final Wrap-Up report that details your overall score, topic-wise strengths/weaknesses, and gives an actionable learning path.
 
-### AI-Powered Capabilities
-- Intelligent question selection using heuristic search
-- Answer evaluation with logical inference
-- Adaptive difficulty adjustment
-- Personalized report generation
-- Strength/weakness analysis
+---
 
-🚀 Installation
+## 🚀 Installation & Setup
 
 ### Prerequisites
 - Python 3.8 or higher
-- pip package manager
-- Git (optional)
-  
-Usage Guide
-Step 1: Complete Your Profile
-# Fill in the sidebar form:
-- Full Name
-- Email Address
-- Target Role (Software Engineer, Data Scientist, etc.)
-- Experience Level
-- Technical Skills (select multiple)
+- Microphone and Webcam 
 
-Step 2: Start Interview
-# Click "START NEW INTERVIEW" button
-# Answer questions naturally
-# Get instant AI feedback
+### Quick Start
 
-Step 3: Review Performance
-# After 10 questions, receive:
-- Overall score
-- Topic-wise analysis
-- Strengths and weaknesses
-- Personalized learning path
-- Resource recommendations
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/your-username/ai-interview-coach.git
+   cd ai-interview-coach
+   ```
 
-Detailed Stack
-Frontend:
-  - Framework: Streamlit 1.28
-  - Charts: Plotly 5.17
-  - Animations: CSS3 Keyframes
-  - Icons: Emoji/Unicode
+2. **Install dependencies**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-Backend:
-  - Language: Python 3.8+
-  - Web Server: Streamlit built-in
-  - State Management: Session State
+3. **Run the Application**
+   ```bash
+   streamlit run app.py
+   # Or use the provided batch script on Windows:
+   # .\run.bat
+   ```
 
-AI Algorithms:
-  - Search: Best-First Search
-  - Inference: Forward Chaining
-  - Planning: Goal Stack
-  - Expert System: Rule-based
+4. **Access the App**
+   Open your browser to `http://localhost:8501`. **Allow Camera and Microphone permissions** when prompted.
 
-Data:
-  - Knowledge Base: JSON-like dicts
-  - Reports: JSON export
-  - Session: In-memory
+---
 
-  
-### Step-by-Step Setup
+## 🛠️ Technology Stack
 
-1. **Clone or create project folder**
-```bash
-mkdir ai-interview-coach
+**Frontend / Interface:**
+- **Framework**: Streamlit
+- **Media**: Streamlit `components.v1.html` (for direct DOM Video access)
+- **UI State**: Streamlit Session State for seamless multi-stage rendering
 
-cd ai-interview-coach
-//
+**Audio & Voice Processing:**
+- **Text-to-Speech**: `gTTS` (Google Text-to-Speech) with session-state base64 caching.
+- **Speech-to-Text**: `speech_recognition` & `audio_recorder_streamlit`.
 
-Member 1: Knowledge Architect
-File: knowledge_base.py (100% ownership)
+**AI & Backend Logic:**
+- **Search Algorithms**: Best-First Search (Question Selection).
+- **Inference Engine**: Forward Chaining (Answer Evaluation). 
 
-# Tasks for Member 1:
-# 1. Create question bank structure
-# 2. Add questions for different topics
-# 3. Define ideal answers
-# 4. Set difficulty levels
-# 5. Add more topics (Java, React, etc.)
+---
 
-def _initialize_questions(self):
-    """YOU NEED TO ADD MORE QUESTIONS HERE"""
-    # Add at least 30 questions across:
-    # - Python (10 questions)
-    # - SQL (8 questions)
-    # - DSA (7 questions)
-    # - JavaScript (5 questions)
-    pass
+## 📖 Usage Guide
 
-def _initialize_ideal_answers(self):
-    """YOU NEED TO ADD IDEAL ANSWERS"""
-    # For each question, add:
-    # - Key points
-    # - Example code
-    # - Common mistakes
-    pass
-Deliverables:
+1. **Profile Setup**: In the left sidebar, enter your role, experience, and key skills. Click "Save Profile".
+2. **Start the Meeting**: Click **Start Your Interview**. The camera feed connects, and the AI introduces the session.
+3. **The Interview**: Click "I'm Ready" to begin. The AI will speak each question out loud. Look into your camera, click the microphone button, and dictate your answer.
+4. **The Evaluation**: After 10 questions, the interview concludes automatically, generating your comprehensive performance report.
 
-✅ 30+ questions in knowledge base
-
-✅ 5+ topics covered
-
-✅ All ideal answers defined
-
-✅ Difficulty levels for each question
-
-Member 2: Search Specialist
-File: question_selector.py (100% ownership)
-
-# Tasks for Member 2:
-# 1. Implement heuristic function
-# 2. Ensure no question repetition
-# 3. Add adaptive difficulty
-# 4. Optimize question selection
-# 5. Track question history
-
-def _calculate_heuristic(self, question, profile, answers):
-    """YOU NEED TO IMPROVE THIS HEURISTIC"""
-    # Weights: relevance, difficulty, novelty, weakness
-    # Current: 0.3, 0.3, 0.2, 0.2
-    # You can adjust these based on testing
-    pass
-
-def _get_candidate_questions(self, profile):
-    """YOU NEED TO EXPAND TOPIC MAPPING"""
-    # Add more role-topic mappings
-    # Example: "AI Engineer" -> ["python", "machine learning"]
-    pass
-Deliverables:
-
-✅ Working heuristic algorithm
-
-✅ No question repetition
-
-✅ Adaptive difficulty working
-
-✅ Performance tracking
-
-Member 3: Logic Engine Specialist
-File: answer_evaluator.py (100% ownership)
-
-# Tasks for Member 3:
-# 1. Improve answer evaluation
-# 2. Enhance keyword matching
-# 3. Add more evaluation rules
-# 4. Generate better feedback
-# 5. Implement concept detection
-
-def _evaluate_keywords(self, answer, keywords):
-    """YOU NEED TO MAKE THIS SMARTER"""
-    # Current: simple word matching
-    # Improve: synonym detection, context awareness
-    pass
-
-def _generate_feedback(self, **kwargs):
-    """YOU NEED TO MAKE FEEDBACK MORE HELPFUL"""
-    # Add more specific suggestions
-    # Include learning resources
-    # Point to exact improvements
-    pass
-Deliverables:
-
-✅ Accurate answer scoring
-
-✅ Detailed feedback generation
-
-✅ Mistake detection
-
-✅ Concept evaluation
-
-Member 4: Report & Analytics Specialist
-File: performance_report.py (100% ownership)
-
-# Tasks for Member 4:
-# 1. Create comprehensive reports
-# 2. Generate learning paths
-# 3. Add progress visualization
-# 4. Suggest resources
-# 5. Track improvement over time
-
-def generate_report(self, user_profile, answers):
-    """YOU NEED TO ENHANCE THIS REPORT"""
-    # Add:
-    # - Time-based analysis
-    # - Comparison with peers
-    # - Skill gap analysis
-    # - Career recommendations
-    pass
-
-def _generate_learning_path(self, weaknesses, profile):
-    """YOU NEED TO CREATE BETTER LEARNING PATHS"""
-    # Add:
-    # - Daily study plans
-    # - Video tutorial links
-    # - Practice exercise suggestions
-    pass
-Deliverables:
-
-✅ Detailed performance reports
-
-✅ Personalized learning paths
-
-✅ Resource recommendations
-
-✅ Progress tracking
-
-Member 5: Frontend & UI/UX Specialist
-Files: app.py (80%), utils.py (70%)
-
-# Tasks for Member 5:
-# 1. Design beautiful UI
-# 2. Add animations
-# 3. Improve user experience
-# 4. Make it mobile responsive
-# 5. Add voice features
-
-# In app.py:
-def init_session_state():
-    """YOU NEED TO ADD MORE UI FEATURES"""
-    # Add:
-    # - Dark mode toggle
-    # - Font size controls
-    # - Accessibility features
-    pass
-
-# In utils.py:
-def get_robot_avatar(emotion):
-    """YOU NEED TO CREATE MORE AVATARS"""
-    # Add emotions: excited, sad, confused
-    # Make them animated
-    pass
-Deliverables:
-
-✅ Professional UI design
-
-✅ Smooth animations
-
-✅ Mobile responsive
-
-✅ Voice input (optional)
-
-
+---
+*Built to help candidates practice technical interviews in a highly realistic, pressured environment.*

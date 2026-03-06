@@ -645,19 +645,26 @@ if st.session_state.interview_active:
         </div>""", unsafe_allow_html=True)
 
     # ── FIX 3: Cache TTS so it plays only ONCE per greeting (not on every rerun) ──
-    if stage == 'intro' and not st.session_state.intro_spoken:
-        greeting = (
-            f"Hello {cand_name}, welcome to your AI interview session for the role of "
-            f"{profile.get('target_role', 'Software Engineer')}. "
-            "I will be asking you a series of technical questions. "
-            "Please answer clearly and in detail. Let us begin!"
-        )
-        # Cache audio bytes so it survives reruns without re-requesting Google TTS
-        if 'cached_tts_greeting' not in st.session_state:
-            st.session_state.cached_tts_greeting = text_to_speech_autoplay(greeting)
-        st.markdown(st.session_state.cached_tts_greeting, unsafe_allow_html=True)
-        st.session_state.intro_spoken    = True
-        st.session_state.interview_stage = 'questions'
+    if stage == 'intro':
+        if not st.session_state.intro_spoken:
+            greeting = (
+                f"Hello {cand_name}, welcome to your AI interview session for the role of "
+                f"{profile.get('target_role', 'Software Engineer')}. "
+                "I will be asking you a series of technical questions. "
+                "Please answer clearly and in detail. Let us begin!"
+            )
+            # Cache audio bytes so it survives reruns without re-requesting Google TTS
+            if 'cached_tts_greeting' not in st.session_state:
+                st.session_state.cached_tts_greeting = text_to_speech_autoplay(greeting)
+            st.markdown(st.session_state.cached_tts_greeting, unsafe_allow_html=True)
+            st.session_state.intro_spoken = True
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            if st.button("👉 I'm Ready — Ask First Question", use_container_width=True, type="primary", key="btn_ready"):
+                st.session_state.interview_stage = 'questions'
+                st.rerun()
 
     # ── Camera panel: pure browser-side getUserMedia() — no server relay needed ──
     # This is exactly how Google Meet shows your self-view: the browser accesses
