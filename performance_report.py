@@ -71,6 +71,42 @@ class PerformanceReport:
             "resources": self._suggest_resources(weaknesses)
         }
         
+        # Feature 3: Report Narrative Summary
+        try:
+            import streamlit as st
+            if st.session_state.get('ai_enhanced_mode', False):
+                from utils import call_gemini
+                
+                role = user_profile.get("target_role", "candidate")
+                
+                # Extract learning path details
+                module_names_list = ", ".join([step['goal'] for step in learning_path if step.get('phase') != 'optimal_plan'])
+                
+                total_hours = "unknown"
+                for step in learning_path:
+                    if step.get('phase') == 'optimal_plan':
+                        total_hours = step.get('estimated_time', 'unknown')
+                        break
+                        
+                # Simplify topic scores to a readable string
+                topic_scores_str = ", ".join([f"{topic}: {data['average_score']}/10" for topic, data in topic_performance.items()])
+                
+                prompt = (
+                    f"You are an AI career coach reviewing an interview performance.\n"
+                    f"The candidate interviewed for: {role}\n"
+                    f"Their topic scores were: {topic_scores_str}\n"
+                    f"The optimal study path calculated is: {module_names_list} totalling {total_hours}.\n"
+                    f"Write a 3-sentence personalised coaching summary. Mention their strongest topic, "
+                    f"their weakest topic, and end with an encouraging closing line. "
+                    f"Be conversational, not robotic."
+                )
+                
+                llm_summary = call_gemini(prompt, feature_name="Feature 3: Report Summary")
+                if llm_summary:
+                    report["llm_summary"] = llm_summary
+        except Exception as e:
+            print("Failed to generate LLM summary:", e)
+        
         return report
     
     def _generate_empty_report(self, user_profile: Dict) -> Dict:

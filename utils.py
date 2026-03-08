@@ -10,6 +10,52 @@ from datetime import datetime
 import random
 import base64
 from typing import List, Dict, Any, Optional
+import os
+from dotenv import load_dotenv
+
+import google.generativeai as genai
+
+import time
+
+# Load env variables and configure Gemini
+load_dotenv()
+gemini_api_key = os.getenv("GEMINI_API_KEY")
+if gemini_api_key:
+    genai.configure(api_key=gemini_api_key)
+
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_FALLBACK = "gemini-2.5-flash-lite"
+
+def call_gemini(prompt: str, feature_name: str = "Unknown") -> Optional[str]:
+    """
+    Safely calls Gemini API. Returns None if feature is off, 
+    API key is missing, or an error occurs.
+    """
+    # Check if AI mode is toggled on in session state
+    if not st.session_state.get('ai_enhanced_mode', False):
+        return None
+        
+    if not gemini_api_key:
+        return None
+        
+    # Rate limit protection (Feature 2)
+    time.sleep(0.5)
+        
+    try:
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        response = model.generate_content(prompt)
+        print(f"[Gemini] Called successfully | Model: {GEMINI_MODEL} | Feature: {feature_name}")
+        return response.text.strip()
+    except Exception as e:
+        print(f"[Gemini] {GEMINI_MODEL} failed for {feature_name}: {e}. Trying fallback...")
+        try:
+            model = genai.GenerativeModel(GEMINI_FALLBACK)
+            response = model.generate_content(prompt)
+            print(f"[Gemini] Called successfully | Model: {GEMINI_FALLBACK} | Feature: {feature_name}")
+            return response.text.strip()
+        except Exception as fallback_e:
+            print(f"Gemini API Error for {feature_name}: {fallback_e}")
+            return None
 
 # Try to import voice libraries (optional)
 try:

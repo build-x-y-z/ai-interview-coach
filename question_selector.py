@@ -337,7 +337,37 @@ class QuestionSelector:
         scored_questions.sort(key=lambda x: x[0], reverse=True)
         
         if scored_questions:
-            selected = scored_questions[0][1]
+            # Create a shallow copy so we don't unexpectedly overwrite the raw KB dictionary
+            selected = scored_questions[0][1].copy()
+            
+            # Feature 4: Dynamic Question Generation
+            try:
+                import streamlit as st
+                if st.session_state.get('ai_enhanced_mode', False):
+                    from utils import call_gemini
+                    
+                    topic = selected.get("topic", "general")
+                    difficulty = selected.get("difficulty", "intermediate")
+                    role = user_profile.get("target_role", "candidate")
+                    concepts = selected.get("concepts", [])
+                    top_concept = concepts[0] if concepts else topic
+                    
+                    prompt = (
+                        f"You are a technical interviewer. Generate exactly ONE interview question "
+                        f"about {topic} at {difficulty} level for a {role} candidate.\n"
+                        f"The question must test understanding of {top_concept}.\n"
+                        f"Return ONLY the question text. No numbering, no explanation, no quotes.\n"
+                        f"Maximum 25 words."
+                    )
+                    
+                    llm_question = call_gemini(prompt, feature_name="Feature 4: Dynamic Question")
+                    if llm_question:
+                        selected["question"] = llm_question
+                        if "question_text" in selected:
+                            selected["question_text"] = llm_question
+            except Exception as e:
+                print("Failed to generate LLM dynamic question:", e)
+                
             # Add to history so it won't be asked again
             if selected.get('id'):
                 self.question_history.append(selected['id'])

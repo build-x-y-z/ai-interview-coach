@@ -464,6 +464,7 @@ with st.sidebar:
 
     if not st.session_state.interview_active and not st.session_state.interview_complete:
         st.checkbox("⚙️ Use Pre-Planned Syllabus (CSP & Backtracking)", value=False, key="csp_toggle")
+        st.checkbox("⚡ Enable AI-Enhanced Mode (Gemini)", value=False, key="ai_enhanced_mode")
         
         if st.button("🚀 START NEW INTERVIEW", use_container_width=True):
             if st.session_state.user_profile:
@@ -698,7 +699,23 @@ if st.session_state.interview_active:
     # ── FIX 3: Cache TTS so it plays only ONCE per greeting (not on every rerun) ──
     if stage == 'intro':
         if not st.session_state.intro_spoken:
-            greeting = (
+            if 'intro_message' not in st.session_state:
+                st.session_state.intro_message = None
+                
+                # Feature 1: Personalised Voice Introduction (Gemini)
+                if st.session_state.get('ai_enhanced_mode', False):
+                    from utils import call_gemini
+                    prompt = (
+                        f"You are an AI interview coach. Write a short 2-sentence welcome message "
+                        f"for {cand_name} who is interviewing for a {profile.get('target_role', 'Software Engineer')} "
+                        f"position at {profile.get('experience_level', 'entry')} level. "
+                        f"Be warm, professional, and encouraging. No more than 40 words."
+                    )
+                    llm_greeting = call_gemini(prompt, feature_name="Feature 1: Voice Intro")
+                    if llm_greeting:
+                        st.session_state.intro_message = llm_greeting
+
+            greeting = st.session_state.intro_message or (
                 f"Hello {cand_name}, welcome to your AI interview session for the role of "
                 f"{profile.get('target_role', 'Software Engineer')}. "
                 "I will be asking you a series of technical questions. "
@@ -1093,6 +1110,14 @@ if st.session_state.interview_complete and st.session_state.report:
             <h2 style="font-size:2rem;margin-bottom:0.4rem;">🎉 Interview Complete!</h2>
             <p style="opacity:0.9;margin:0;">Here is your comprehensive performance analysis, {report['user_profile'].get('name','Candidate')}.</p>
         </div>""", unsafe_allow_html=True)
+        
+    if "llm_summary" in report:
+        st.markdown(f"""
+            <div style="background:#f0fdf4; border-left:5px solid #22c55e; padding:1.5rem; border-radius:10px; margin-bottom:1.5rem;">
+                <h4 style="color:#166534; margin-top:0; margin-bottom:0.8rem;">✨ AI Coach Summary</h4>
+                <p style="color:#15803d; margin:0; font-size:1.1rem; line-height:1.6;">{report['llm_summary']}</p>
+            </div>
+        """, unsafe_allow_html=True)
 
     # ── Summary metric cards ──
     mc1, mc2, mc3, mc4 = st.columns(4)
@@ -1287,6 +1312,14 @@ if st.session_state.interview_complete and st.session_state.report:
         <div style="color:#94a3b8; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">Candidate Answer</div>
         {ans_html}
     </div>
+
+    <!-- AI Coach LLM Feedback -->
+    {f'''
+    <div style="margin-bottom:2rem; background:#0f766e; padding:1.2rem 1.5rem; border-radius:10px; border-left:5px solid #14b8a6; color:#ccfbf1; line-height:1.6; font-size:1.05rem;">
+        <div style="color:#5eead4; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">✨ AI Coach Feedback</div>
+        {fb.get('llm_feedback', 'No feedback provided.').replace(chr(10), '<br>')}
+    </div>
+    ''' if 'llm_feedback' in fb else ''}
 
     <!-- Grid: Strengths & Weaknesses -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
