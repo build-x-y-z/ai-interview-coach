@@ -32,6 +32,7 @@ from knowledge_base import KnowledgeBase
 from question_selector import QuestionSelector
 from answer_evaluator import AnswerEvaluator
 from performance_report import PerformanceReport
+from interview_planner_csp import ConstraintSatisfactionPlanner
 
 # Utility helpers (TTS, STT, animations)
 from utils import (
@@ -353,11 +354,16 @@ def process_answer(answer_text: str):
 
     total_q = 10   # configurable interview length
     if len(st.session_state.answer_history) < total_q:
-        next_q = st.session_state.selector.select_next_question(
-            st.session_state.user_profile, st.session_state.answer_history
-        )
-        st.session_state.current_question = next_q
-        st.session_state.last_played_q_id = None   # triggers TTS for new question
+        if st.session_state.get("csp_toggle") and st.session_state.get("planned_questions"):
+            next_q = st.session_state.planned_questions.pop(0)
+            st.session_state.current_question = next_q
+            st.session_state.last_played_q_id = None
+        else:
+            next_q = st.session_state.selector.select_next_question(
+                st.session_state.user_profile, st.session_state.answer_history
+            )
+            st.session_state.current_question = next_q
+            st.session_state.last_played_q_id = None   # triggers TTS for new question
     else:
         # All questions done → wrapup stage
         st.session_state.interview_stage = 'wrapup'
@@ -457,12 +463,28 @@ with st.sidebar:
     st.markdown('<div class="sidebar-header">🎮 Interview Controls</div>', unsafe_allow_html=True)
 
     if not st.session_state.interview_active and not st.session_state.interview_complete:
+        st.checkbox("⚙️ Use Pre-Planned Syllabus (CSP & Backtracking)", value=False, key="csp_toggle")
+        
         if st.button("🚀 START NEW INTERVIEW", use_container_width=True):
             if st.session_state.user_profile:
                 reset_interview()
-                first_q = st.session_state.selector.select_next_question(
-                    st.session_state.user_profile, []
-                )
+                
+                if st.session_state.get("csp_toggle"):
+                    planner = ConstraintSatisfactionPlanner(st.session_state.kb)
+                    planned = planner.generate_interview_plan()
+                    if not planned:
+                        st.warning("CSP planner could not find a valid plan. Switching to Best-First Search.")
+                        import time; time.sleep(2.5)
+                        first_q = st.session_state.selector.select_next_question(st.session_state.user_profile, [])
+                        st.session_state.planned_questions = []
+                    else:
+                        st.session_state.planned_questions = planned
+                        first_q = st.session_state.planned_questions.pop(0)
+                else:
+                    first_q = st.session_state.selector.select_next_question(
+                        st.session_state.user_profile, []
+                    )
+                    
                 st.session_state.current_question    = first_q
                 st.session_state.interview_active    = True
                 st.session_state.interview_stage     = 'intro'
@@ -486,6 +508,21 @@ with st.sidebar:
         if st.button("🔄 START NEW SESSION", use_container_width=True):
             reset_interview()
             st.rerun()
+
+    st.markdown("---")
+    
+    # ── Knowledge Explorer (BFS) ──
+    st.markdown('<div class="sidebar-header">📚 Study Topics</div>', unsafe_allow_html=True)
+    with st.expander("Explore Knowledge Base (BFS)", expanded=False):
+        st.markdown("**Unit II: Uninformed Search (BFS)**\\nTraversing Root → Topic → Difficulty → Question")
+        bfs_nodes = st.session_state.kb.explore_topics_bfs()
+        for node in bfs_nodes:
+            if node["level"] == "topic":
+                st.markdown(f"**📘 {node['name']}**")
+            elif node["level"] == "difficulty":
+                st.markdown(f"&nbsp;&nbsp;↳ *{node['name']}*")
+            elif node["level"] == "question":
+                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;• [Q{node['id']}] {node['name']}")
 
     st.markdown("---")
 
@@ -601,9 +638,23 @@ if not st.session_state.interview_active and not st.session_state.interview_comp
         with sc:
             if st.button("🚀 START YOUR INTERVIEW", use_container_width=True):
                 reset_interview()
-                first_q = st.session_state.selector.select_next_question(
-                    st.session_state.user_profile, []
-                )
+                
+                if st.session_state.get("csp_toggle"):
+                    planner = ConstraintSatisfactionPlanner(st.session_state.kb)
+                    planned = planner.generate_interview_plan()
+                    if not planned:
+                        st.warning("CSP planner could not find a valid plan. Switching to Best-First Search.")
+                        import time; time.sleep(2.5)
+                        first_q = st.session_state.selector.select_next_question(st.session_state.user_profile, [])
+                        st.session_state.planned_questions = []
+                    else:
+                        st.session_state.planned_questions = planned
+                        first_q = st.session_state.planned_questions.pop(0)
+                else:
+                    first_q = st.session_state.selector.select_next_question(
+                        st.session_state.user_profile, []
+                    )
+                    
                 st.session_state.current_question    = first_q
                 st.session_state.interview_active    = True
                 st.session_state.interview_stage     = 'intro'
