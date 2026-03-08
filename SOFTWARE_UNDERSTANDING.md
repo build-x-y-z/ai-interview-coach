@@ -98,9 +98,9 @@ This software is broken down into several modular pieces. Think of it like a res
 
 
 ### 📄 `utils.py`
-- **What is its job?** This holds small helper tools: formatting UI boxes, making the robot avatar, giving animations, and turning text into voice or voice into text.
-- **What would break?** If deleted, the app would lose its voice, its ability to hear you, and all its pretty animations.
-- **Real-world analogy:** utils.py is like the restaurant's toolbox (forks, knives, napkins, light switches) — small things that make the experience work.
+- **What is its job?** This holds small helper tools: formatting UI boxes, rendering the animated robot avatar, providing bouncy CSS animations, managing rate-limited connections to the Gemini LLM API, and executing text-to-speech (via Microsoft `edge-tts`) or speech-to-text processes.
+- **What would break?** If deleted, the app would lose its voice, its ability to hear you, its generative AI coaching tips, and all of its visual animations.
+- **Real-world analogy:** utils.py is like the restaurant's toolbox (forks, knives, napkins, lights) — essential details that make the entire experience function smoothly.
 
 
 
@@ -201,7 +201,7 @@ When you type `streamlit run app.py` into your terminal, a massive chain reactio
 
 
 ## 4. 👤 User Profile — What Does The User Enter and Where Does It Go?
-Before starting, the user must define who they are and what job they want.
+Before starting, the user must define who they are and what job they want. This form lives cleanly tucked inside a collapsible `st.expander` named "**👤 Your Profile**" in the left sidebar.
 
 **Input Fields Shown:**
 - **Full Name** (Text box): Any string, e.g., 'Alice Smith'
@@ -548,13 +548,13 @@ Next attempt for Slot 5: Q4 (Intermediate Python). Rule OK! It continues.
 ## 8. 🗣️ The Interview Flow — Question By Question
 Here is the exact lifecycle of your interview in the application:
 1. **First Question:** When you click 'Start', the system queries either the BFS Heuristic or the CSP Planner to get Q1. It saves Q1 to `st.session_state.current_question`.
-2. **Introduction:** The state shifts to `stage = 'intro'`. The AI voice greets you, using Google TTS to synthesize an MP3. You press 'Ask First Question'.
-3. **Asking:** The state shifts to `stage = 'questions'`. The UI plays the TTS for Q1. The webcam component `getUserMedia` renders your video natively in your browser.
-4. **Answering:** You talk into your microphone. The `speech_recognition` module captures your audio clip and converts it to text.
-5. **Submission:** You click Submit. Immediately, the string of text is passed into `answer_evaluator.py`. The evaluator grades you instantly (we'll explain how next).
-6. **Storage:** The app packages your original text, the AI's feedback, and your score into a dictionary and appends it to `st.session_state.answer_history`. It also flags the Question ID as 'used' so it won't repeat.
-7. **Next Step:** The system counts the length of `answer_history`. If it is less than 10, it calls the Question Selector for the next question. The screen refreshes, showing Q2.
-8. **Ending:** When `len(answer_history) == 10`, the system forcibly changes the `interview_stage` to `'report'`. The main screen clears out the video and displays your report card.
+2. **Introduction:** The state shifts to `stage = 'intro'`. The AI opens realistically with a paused *"Hello? Can you hear me?"* check, followed by a personalized Google Gemini-generated greeting specific to your name and role. You press 'Ask First Question'.
+3. **Asking:** The state shifts to `stage = 'questions'`. The UI plays the TTS audio. The webcam component `getUserMedia` natively renders your local video in a sleek dark card side-by-side with an animated AI avatar that pulses green to indicate when you can speak.
+4. **Answering:** You talk into your microphone. The `speech_recognition` module captures your audio clip and converts it into text.
+5. **Score & Tip:** You click Submit. The text is passed into `answer_evaluator.py` for logical grading. A detailed scorecard immediately appears on your screen showing matched keywords and concepts, updating a 10-point progress map. Using Gemini, you can click **"💡 Get Instant Coaching Tip"** to receive one immediate, generative piece of advice based precisely on the items you missed.
+6. **Storage:** The app packages your text, feedback, and score into a dictionary appended to `st.session_state.answer_history`. The Question ID is flagged as 'used'.
+7. **Next Step:** The system checks `answer_history` length. If less than 10, it calls the Question Selector for the next question. The AI verbally acknowledges your last answer (*"Got it, thank you"*), uses a transition phrase (*"Let's shift gears"*), and asks Q2, complete with natural pacing delays.
+8. **Ending:** When `len(answer_history) == 10`, the system shifts `interview_stage` to `'wrapup'`. The AI speaks a custom Gemini-generated closing sentence complimenting your specific strongest topic before clearing the screen to display your final analytics report card.
 
 
 
@@ -767,9 +767,10 @@ Iteration 2:
 
 ## 11. 🎤 Voice System — How Does Speech Work?
 The avatar is not just silent text.
-- **Speaking (TTS):** We use a library called `gTTS` (Google Text To Speech). The python code takes the question string, sends it to Google's API, and receives a raw MP3 audio file. We encode this MP3 into a base64 string and inject it into `<audio autoplay>` HTML tags in the Streamlit page so it plays instantly.
+- **Speaking (TTS):** The core engine uses `edge-tts` (Microsoft Azure Neural TTS) to generate incredibly natural, human-sounding inflections. Python accepts a text string, saves it asynchronously as a local MP3 file using `asyncio`, loads the raw audio bytes, and deletes the temporary file. We encode those bytes to base64 and inject it directly into HTML `<audio autoplay>` tags hidden in Streamlit. The application hashes the text string to uniquely cache the audio internally; this completely prevents audio clips from aggressively replaying if the user interacts with random UI elements causing a Streamlit generic rerun. If `edge-tts` timeouts, the system gracefully falls back to using `gTTS`.
 - **Listening (STT):** We use `audio_recorder_streamlit` to render a mic button on the webpage. When you hit stop, the browser sends your RAW WAV audio bytes to python. Python uses `SpeechRecognition` to decode that WAV file into English text.
-- **Fallback:** If the microphone fails or you deny browser permissions, the application does not crash. It catches the network/permission error inside a `try/except` block and safely shows a text-input box so you can type your answer instead.
+- **Avatar Animation:** The AI interviewer avatar dynamicly reacts to system events. If the microphone is muted, it sits 'neutral'. If the microphone is turned on and ready, it switches into a 'listening' pulsing green animation using pure HTML/CSS keyframes securely embedded inside an iframe component.
+- **Fallback:** If the microphone fails or you deny browser permissions, the application does not crash. It catches the network/permission error inside a `try/except` block and safely supplies a standard text box so you can manually type your answer instead.
 
 
 
@@ -987,6 +988,9 @@ A quick-reference for the technical jargon used throughout this document.
 - **weakness_focus:** The component of the Best-First heuristic that boosts priority of topics where your most recent score was low. Calculated as 1 minus your latest normalised score for that topic.
 - **get_predicted_questions():** A method that runs the full heuristic scoring and returns the top N candidates without removing them from the question pool. Used exclusively for the visualizer panel.
 - **Peek Operation:** Reading the top item of a queue without removing it — like looking at the next card in a deck without drawing it.
+- **Gemini API:** A Large Language Model (LLM) developed by Google. In our architecture, it is isolated and used *strictly* for writing personalized greetings, personalized closings, and Instant Coaching Tips. It never overwrites the core Classical AI mathematical gradings.
+- **edge-tts:** A free Python wrapper around Microsoft Azure's powerful Neural Text-To-Speech engine. This creates the highly lifelike AI voices used by the interviewer.
+- **Instant Coaching Tip:** A dynamic UI event that allows you to click a button after answering a single question to get real-time generative feedback via Gemini, parsing your exact missed concepts without waiting for the final report.
 
 
 
