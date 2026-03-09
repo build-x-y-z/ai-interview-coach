@@ -33,6 +33,7 @@ from question_selector import QuestionSelector
 from answer_evaluator import AnswerEvaluator
 from performance_report import PerformanceReport
 
+
 # Utility helpers (TTS, STT, animations)
 from utils import (
     get_typing_animation, get_robot_avatar,
@@ -1286,3 +1287,4 @@ st.markdown("""
             Built with ❤️ for serious interview preparation
         </p>
     </div>""", unsafe_allow_html=True)
+

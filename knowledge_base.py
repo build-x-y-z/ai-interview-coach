@@ -260,3 +260,5 @@ class KnowledgeBase:
             "example": "",
             "common_mistakes": []
         })
+
+
