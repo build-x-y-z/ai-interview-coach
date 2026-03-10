@@ -758,18 +758,21 @@ if st.session_state.interview_active:
                     llm_greeting = call_gemini(prompt, feature_name="Feature 1: Voice Intro")
                     if llm_greeting:
                         st.session_state.intro_message = llm_greeting
-
-            greeting = st.session_state.intro_message or (
+            
+            base_greeting = st.session_state.intro_message or (
                 f"Hi {cand_name}, I'm an AI, your interviewer today. "
                 f"Really glad you could make it. We'll be going through some {profile.get('target_role', 'Software Engineer')} questions today — should take about 15-20 minutes. "
                 "Feel free to take your time with each answer, there's no rush. "
                 "Ready to get started?"
             )
             
-            # 1.2 Human-like Opening Sequence
-            text_to_speech_autoplay("Hello? Can you hear me okay? Great, give me just one second...")
-            time.sleep(1.5)
-            text_to_speech_autoplay(greeting)
+            # Single TTS call to avoid overlapping intro audio segments
+            full_greeting = (
+                "Hello, can you hear me okay? Great. "
+                "Give me just one second while I get everything ready. "
+                + base_greeting
+            )
+            text_to_speech_autoplay(full_greeting)
             st.session_state.intro_spoken = True
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1023,11 +1026,6 @@ if st.session_state.interview_active:
         if "wrapup_started" not in st.session_state:
             st.session_state.wrapup_started = True
             
-            # 1.3 Human-like Closing Sequence
-            closing1 = f"That was the last question, {cand_name}. Really appreciate your time today."
-            text_to_speech_autoplay(closing1)
-            time.sleep(TIMING["closing_between_lines"])
-            
             # Determine strongest topic
             strongest_topic = "general concepts"
             if st.session_state.answer_history:
@@ -1041,6 +1039,7 @@ if st.session_state.interview_active:
                     avgs = {t: sum(s)/len(s) for t, s in topic_scores.items()}
                     strongest_topic = max(avgs, key=avgs.get)
             
+            closing1 = f"That was the last question, {cand_name}. Really appreciate your time today."
             closing2 = f"You had some strong moments, especially on {strongest_topic}. I'll put together your feedback report now."
             
             if st.session_state.get('ai_enhanced_mode', False):
@@ -1058,8 +1057,9 @@ if st.session_state.interview_active:
                 except Exception:
                     pass
             
-            text_to_speech_autoplay(closing2)
-            time.sleep(1.5)
+            # Single TTS call to avoid overlapping closing lines
+            full_closing = f"{closing1} {closing2}"
+            text_to_speech_autoplay(full_closing)
         st.markdown("""
             <div style="background:linear-gradient(135deg,#065f46,#047857);
                         color:white;padding:2rem;border-radius:14px;text-align:center;margin:1rem 0;">
@@ -1080,24 +1080,17 @@ if st.session_state.interview_active:
     # ── QUESTIONS STAGE ──
     elif stage == 'questions' and q:
 
-        # FIX 3 (questions): Cache TTS audio per question ID in session_state.
-        # This ensures the AI voice plays exactly once per new question and is
-        # NEVER re-requested from Google's TTS server on subsequent reruns
-        # (which was causing the audio to restart / break mid-sentence).
+        # Play question audio once per question ID.
+        # To avoid overlapping audio (acknowledgement + transition + question),
+        # we combine everything into a single TTS call.
         if st.session_state.last_played_q_id != q['id']:
             if answered > 0:
-                # 1.4 Acknowledgement and Transitions
                 ack = random.choice(ACKNOWLEDGEMENTS)
                 trans = random.choice(TRANSITIONS)
-                text_to_speech_autoplay(ack)
-                time.sleep(TIMING["after_acknowledgement"])
-                text_to_speech_autoplay(trans)
-                time.sleep(TIMING["before_question"])
-                text_to_speech_autoplay(q['question'])
-                time.sleep(TIMING["after_question_spoken"])
+                combined = f"{ack} {trans} {q['question']}"
+                text_to_speech_autoplay(combined)
             else:
                 text_to_speech_autoplay(q['question'])
-                time.sleep(TIMING["after_question_spoken"])
                 
             st.session_state.last_played_q_id = q['id']
 
@@ -1139,7 +1132,7 @@ if st.session_state.interview_active:
             </div>
             """, unsafe_allow_html=True)
 
-            # Part 2 — Instant Suggestion Button (real-time generative feedback via Gemini)
+             # Part 2 — Instant Suggestion Button (real-time generative feedback via Gemini)
             instant_key = f"instant_tip_{last_q_id}"
             if instant_key not in st.session_state:
                 if st.button("💡 Get Instant Coaching Tip", key=f"btn_tip_{last_q_id}"):
