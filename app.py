@@ -758,18 +758,21 @@ if st.session_state.interview_active:
                     llm_greeting = call_gemini(prompt, feature_name="Feature 1: Voice Intro")
                     if llm_greeting:
                         st.session_state.intro_message = llm_greeting
-
-            greeting = st.session_state.intro_message or (
+            
+            base_greeting = st.session_state.intro_message or (
                 f"Hi {cand_name}, I'm an AI, your interviewer today. "
                 f"Really glad you could make it. We'll be going through some {profile.get('target_role', 'Software Engineer')} questions today — should take about 15-20 minutes. "
                 "Feel free to take your time with each answer, there's no rush. "
                 "Ready to get started?"
             )
             
-            # 1.2 Human-like Opening Sequence
-            text_to_speech_autoplay("Hello? Can you hear me okay? Great, give me just one second...")
-            time.sleep(1.5)
-            text_to_speech_autoplay(greeting)
+            # Single TTS call to avoid overlapping intro audio segments
+            full_greeting = (
+                "Hello, can you hear me okay? Great. "
+                "Give me just one second while I get everything ready. "
+                + base_greeting
+            )
+            text_to_speech_autoplay(full_greeting)
             st.session_state.intro_spoken = True
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1023,11 +1026,6 @@ if st.session_state.interview_active:
         if "wrapup_started" not in st.session_state:
             st.session_state.wrapup_started = True
             
-            # 1.3 Human-like Closing Sequence
-            closing1 = f"That was the last question, {cand_name}. Really appreciate your time today."
-            text_to_speech_autoplay(closing1)
-            time.sleep(TIMING["closing_between_lines"])
-            
             # Determine strongest topic
             strongest_topic = "general concepts"
             if st.session_state.answer_history:
@@ -1041,6 +1039,7 @@ if st.session_state.interview_active:
                     avgs = {t: sum(s)/len(s) for t, s in topic_scores.items()}
                     strongest_topic = max(avgs, key=avgs.get)
             
+            closing1 = f"That was the last question, {cand_name}. Really appreciate your time today."
             closing2 = f"You had some strong moments, especially on {strongest_topic}. I'll put together your feedback report now."
             
             if st.session_state.get('ai_enhanced_mode', False):
@@ -1058,8 +1057,9 @@ if st.session_state.interview_active:
                 except Exception:
                     pass
             
-            text_to_speech_autoplay(closing2)
-            time.sleep(1.5)
+            # Single TTS call to avoid overlapping closing lines
+            full_closing = f"{closing1} {closing2}"
+            text_to_speech_autoplay(full_closing)
         st.markdown("""
             <div style="background:linear-gradient(135deg,#065f46,#047857);
                         color:white;padding:2rem;border-radius:14px;text-align:center;margin:1rem 0;">
@@ -1080,24 +1080,17 @@ if st.session_state.interview_active:
     # ── QUESTIONS STAGE ──
     elif stage == 'questions' and q:
 
-        # FIX 3 (questions): Cache TTS audio per question ID in session_state.
-        # This ensures the AI voice plays exactly once per new question and is
-        # NEVER re-requested from Google's TTS server on subsequent reruns
-        # (which was causing the audio to restart / break mid-sentence).
+        # Play question audio once per question ID.
+        # To avoid overlapping audio (acknowledgement + transition + question),
+        # we combine everything into a single TTS call.
         if st.session_state.last_played_q_id != q['id']:
             if answered > 0:
-                # 1.4 Acknowledgement and Transitions
                 ack = random.choice(ACKNOWLEDGEMENTS)
                 trans = random.choice(TRANSITIONS)
-                text_to_speech_autoplay(ack)
-                time.sleep(TIMING["after_acknowledgement"])
-                text_to_speech_autoplay(trans)
-                time.sleep(TIMING["before_question"])
-                text_to_speech_autoplay(q['question'])
-                time.sleep(TIMING["after_question_spoken"])
+                combined = f"{ack} {trans} {q['question']}"
+                text_to_speech_autoplay(combined)
             else:
                 text_to_speech_autoplay(q['question'])
-                time.sleep(TIMING["after_question_spoken"])
                 
             st.session_state.last_played_q_id = q['id']
 
@@ -1139,38 +1132,54 @@ if st.session_state.interview_active:
             </div>
             """, unsafe_allow_html=True)
 
-            # Part 2 — Instant Suggestion Button
+             # Part 2 — Instant Suggestion Button (real-time generative feedback via Gemini)
             instant_key = f"instant_tip_{last_q_id}"
             if instant_key not in st.session_state:
                 if st.button("💡 Get Instant Coaching Tip", key=f"btn_tip_{last_q_id}"):
-                    with st.spinner("Getting your tip..."):
-                        if st.session_state.get('ai_enhanced_mode', False):
-                            try:
-                                from utils import call_gemini
-                                matched_kw_list = [k for k in last_q_data.get('keywords', []) if k.lower() in ans_lower] if last_q_data else []
-                                missing_c_list = fb.get('missing_concepts', [])
-                                prompt = (
-                                    f"You are a friendly interview coach giving quick real-time advice.\n"
-                                    f"The candidate just answered this interview question: '{last_q}'\n"
-                                    f"Their answer was: '{last_record['answer']}'\n"
-                                    f"They scored {sc}/10.\n"
-                                    f"They correctly mentioned: {matched_kw_list}\n"
-                                    f"They missed these concepts: {missing_c_list}\n\n"
-                                    f"Give ONE specific, actionable tip they can use RIGHT NOW to improve "
-                                    f"this answer if asked again. Start with what they did right in one "
-                                    f"sentence, then give the improvement tip. Maximum 3 sentences total. "
-                                    f"Be conversational and encouraging, like a friend helping you prep. "
-                                    f"No bullet points, no headers."
-                                )
-                                tip = call_gemini(prompt, feature_name="Feature: Instant Tip")
-                                if tip:
-                                    st.session_state[instant_key] = tip
-                                else:
-                                    st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
-                            except Exception:
-                                st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
+                    with st.spinner("Getting your AI coaching tip..."):
+                        strengths = fb.get("strengths") or []
+                        suggestions = fb.get("suggestions") or []
+                        missing_c_list = fb.get("missing_concepts") or []
+
+                        # Default deterministic fallback in case Gemini is unavailable
+                        did_well = strengths[0] if strengths else "You gave a reasonable starting answer."
+                        if suggestions:
+                            improve_part = suggestions[0]
+                        elif missing_c_list:
+                            improve_part = (
+                                "Next time, make sure you explicitly talk about: "
+                                + ", ".join(missing_c_list[:3])
+                                + "."
+                            )
                         else:
-                            st.session_state[instant_key] = "Tip unavailable right now — check the AI Coach Feedback below for suggestions"
+                            improve_part = (
+                                "You can make it even stronger by adding one concrete, real-world example "
+                                "from your experience."
+                            )
+                        fallback_tip = f"{did_well} {improve_part}"
+
+                        # Try generative feedback via Gemini (does not depend on ai_enhanced_mode toggle)
+                        try:
+                            from utils import call_gemini
+
+                            prompt = (
+                                "You are a friendly interview coach giving quick real-time advice.\n"
+                                f"The candidate just answered this interview question: '{last_q}'\n"
+                                f"Their answer was: '{last_record['answer']}'\n"
+                                f"They scored {sc}/10.\n"
+                                f"They correctly mentioned: {matched_kw_list}\n"
+                                f"They missed these concepts: {missing_c_list}\n\n"
+                                "Give ONE specific, actionable tip they can use RIGHT NOW to improve "
+                                "this answer if asked again. Start with what they did right in one "
+                                "short sentence, then give the improvement tip. Maximum 3 sentences total. "
+                                "Be conversational and encouraging, like a friend helping you prep. "
+                                "No bullet points, no headers."
+                            )
+
+                            tip = call_gemini(prompt, feature_name="Feature: Instant Tip")
+                            st.session_state[instant_key] = tip or fallback_tip
+                        except Exception:
+                            st.session_state[instant_key] = fallback_tip
                     st.rerun()
             
             if instant_key in st.session_state:
@@ -1441,149 +1450,78 @@ if st.session_state.interview_complete and st.session_state.report:
                         <br><small class="badge badge-{w['level']}">{w['level'].title()}</small>
                     </div>""", unsafe_allow_html=True)
 
-    # ── Tab 3: Per-question review (full feedback now shown) ──
+    # ── Tab 3: Per-question review (simplified to avoid broken HTML) ──
     with tab3:
         st.subheader("📋 Detailed Question-by-Question Review")
-        
-        # 1. Overall interview score summary
-        st.markdown(f"""
-<div style="background:#1e293b; padding:1.5rem; border-radius:12px; margin-bottom:2.5rem; text-align:center; border:1px solid #334155; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
-    <h3 style="margin:0; font-size:1.3rem; color:#94a3b8; font-family:'Inter',sans-serif;">Overall Interview Score</h3>
-    <div style="font-size:3.5rem; font-weight:800; color:{score_color}; margin:0.5rem 0; font-family:'Inter',sans-serif;">{score}/10</div>
-    <div style="font-size:1.1rem; color:#cbd5e1; font-weight:500;">Performance Level: <strong style="color:white;">{perf_level.replace('_', ' ').title()}</strong></div>
-</div>
-""", unsafe_allow_html=True)
 
         if not st.session_state.answer_history:
             st.info("No answers were recorded.")
         else:
             total_qs = len(st.session_state.answer_history)
-            import re
-            
+
+            # Overall header
+            st.markdown(
+                f"**Overall Interview Score:** `{score}/10` · "
+                f"**Level:** `{perf_level.replace('_', ' ').title()}`"
+            )
+            st.markdown("---")
+
             for i, rec in enumerate(st.session_state.answer_history, 1):
-                sc = rec.get('score', 0)
-                sc_cls = "#10b981" if sc >= 7 else "#f59e0b" if sc >= 5 else "#ef4444"
-                
-                raw_ans = rec.get('answer', '').strip()
-                # 2. Handle Edge Cases
-                if not raw_ans or raw_ans.lower() in ["none", "null", "skipped"]:
-                    ans_html = "<div style='color:#94a3b8; font-style:italic; padding:0.5rem 0;'>No response detected for this question.</div>"
-                else:
-                    # Replace newlines with <br> so Streamlit markdown parser doesn't break the HTML divs
-                    safe_ans = raw_ans.replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
-                    ans_html = f"<div style='color:#f8fafc; line-height:1.6; font-size:1.05rem;'>{safe_ans}</div>"
+                sc = rec.get("score", 0)
+                fb = rec.get("feedback", {}) or {}
 
-                fb = rec.get('feedback', {})
-                if not fb:
-                    fb = {"strengths":[], "weaknesses":[], "suggestions":[], "ideal_answer":"Evaluation returned null."}
+                with st.container():
+                    st.markdown(f"### Question {i} of {total_qs}")
+                    st.markdown(f"**Q:** {rec.get('question', '')}")
+                    st.markdown(f"**Score:** `{sc}/10`")
 
-                strengths_html = "".join([f"<li style='margin-bottom:6px;'>{s}</li>" for s in fb.get('strengths', [])])
-                weaknesses_html = "".join([f"<li style='margin-bottom:6px;'>{w}</li>" for w in fb.get('weaknesses', [])])
-                suggestions_html = "".join([f"<li style='margin-bottom:6px;'>{s}</li>" for s in fb.get('suggestions', [])])
-                
-                ideal_ans_raw = fb.get('ideal_answer', "Not provided.")
-                if isinstance(ideal_ans_raw, dict):
-                    points_html = "".join([f"<li style='margin-bottom:6px;'>{p}</li>" for p in ideal_ans_raw.get('key_points', [])])
-                    example_text = ideal_ans_raw.get('example', '')
-                    
-                    if example_text:
-                        # Clean code block backticks if they exist
-                        example_text = re.sub(r'^```[\w]*\n?', '', example_text)
-                        example_text = re.sub(r'\n?```$', '', example_text)
-                        
-                        example_html = f'<div style="margin-top:0.8rem; font-weight:700; color:#c084fc; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;">Example:</div><pre style="background:#2e1065; padding:1rem; border-radius:8px; overflow-x:auto; margin-top:0.5rem; line-height:1.4;"><code style="color:#a5f3fc; font-family:\'Courier New\', monospace;">{example_text.replace("<", "&lt;").replace(">", "&gt;")}</code></pre>'
+                    st.markdown("**Your answer**")
+                    raw_ans = (rec.get("answer") or "").strip()
+                    if not raw_ans:
+                        st.markdown("_No response detected for this question._")
                     else:
-                        example_html = ""
-                        
-                    ideal_ans_html = f"<div style='margin-bottom:0.5rem; font-weight:700; color:#c084fc; font-size:0.9rem; text-transform:uppercase; letter-spacing:0.5px;'>Key Points:</div><ul style='margin:0 0 1rem 0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;'>{points_html}</ul>{example_html}"
-                else:
-                    ideal_ans = str(ideal_ans_raw)
-                    # First, extract code blocks
-                    code_blocks = []
-                    def replacer(match):
-                        code_blocks.append(match.group(2))
-                        idx = len(code_blocks) - 1
-                        lang_class = f' class="{match.group(1)}"' if match.group(1) else ""
-                        return f'<pre style="background:#2e1065; padding:1rem; border-radius:8px; overflow-x:auto; margin-top:0.5rem; line-height:1.4;"><code{lang_class}>__CODEBLOCK_{idx}__</code></pre>'
-                    
-                    ideal_ans_html = re.sub(r'```(\w+)?\n(.*?)\n```', replacer, ideal_ans, flags=re.DOTALL)
-                    # Next, replace newlines in the normal text with <br>
-                    ideal_ans_html = ideal_ans_html.replace('\n', '<br>')
-                    # Finally, restore the code blocks with their original newlines
-                    for idx, code_content in enumerate(code_blocks):
-                        ideal_ans_html = ideal_ans_html.replace(f'__CODEBLOCK_{idx}__', code_content.replace('<', '&lt;').replace('>', '&gt;'))
+                        st.write(raw_ans)
 
-                # Note: No indentation used in the f-string below so Streamlit's Markdown parser 
-                # doesn't mistakenly wrap the HTML in a <pre> block (which caused the raw HTML bug!)
-                card_html = f"""
-<div style="background:#0f172a; border:1px solid #334155; border-radius:14px; padding:1.8rem; margin-bottom:2.5rem; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
-    
-    <!-- Header -->
-    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:1.2rem; margin-bottom:1.5rem;">
-        <span style="color:#94a3b8; font-size:1.1rem; font-weight:700; font-family:'Inter',sans-serif;">Question {i} of {total_qs}</span>
-        <span style="background:#1e293b; color:#f8fafc; padding:6px 16px; border-radius:20px; font-weight:700; font-size:1rem; border:1px solid #334155;">
-            Score: <span style="color:{sc_cls};">{sc}/10</span>
-        </span>
-    </div>
-    
-    <!-- Question -->
-    <div style="margin-bottom:1.8rem;">
-        <div style="color:#64748b; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">Question</div>
-        <div style="color:#f8fafc; font-size:1.15rem; font-weight:600; line-height:1.5;">{str(rec.get('question', '')).replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')}</div>
-    </div>
+                    if "llm_feedback" in fb:
+                        st.markdown("**✨ AI Coach Feedback**")
+                        st.write(fb["llm_feedback"])
 
-    <!-- Candidate Answer -->
-    <div style="margin-bottom:2rem; background:#1e293b; padding:1.2rem 1.5rem; border-radius:10px; border-left:5px solid #3b82f6;">
-        <div style="color:#94a3b8; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">Candidate Answer</div>
-        {ans_html}
-    </div>
+                    strengths = fb.get("strengths") or []
+                    weaknesses = fb.get("weaknesses") or []
+                    suggestions = fb.get("suggestions") or []
+                    missing = fb.get("missing_concepts") or []
 
-    <!-- AI Coach LLM Feedback -->
-    {f'''
-    <div style="margin-bottom:2rem; background:#0f766e; padding:1.2rem 1.5rem; border-radius:10px; border-left:5px solid #14b8a6; color:#ccfbf1; line-height:1.6; font-size:1.05rem;">
-        <div style="color:#5eead4; font-size:0.85rem; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; margin-bottom:0.6rem;">✨ AI Coach Feedback</div>
-        {fb.get('llm_feedback', 'No feedback provided.').replace(chr(10), '<br>')}
-    </div>
-    ''' if 'llm_feedback' in fb else ''}
+                    if strengths:
+                        st.markdown("**✅ Strengths**")
+                        for s in strengths:
+                            st.markdown(f"- {s}")
 
-    <!-- Grid: Strengths & Weaknesses -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-        <!-- Strengths Card -->
-        <div style="background:#064e3b; padding:1.4rem; border-radius:10px; border:1px solid #047857;">
-            <h5 style="color:#34d399; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">✅ Strengths</h5>
-            <ul style="color:#d1fae5; margin:0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;">
-                {strengths_html if strengths_html else "<li style='opacity:0.8;'>No specific strengths identified.</li>"}
-            </ul>
-        </div>
-        
-        <!-- Weaknesses Card -->
-        <div style="background:#7f1d1d; padding:1.4rem; border-radius:10px; border:1px solid #b91c1c;">
-            <h5 style="color:#f87171; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">🔧 Areas to Improve</h5>
-            <ul style="color:#fee2e2; margin:0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;">
-                {weaknesses_html if weaknesses_html else "<li style='opacity:0.8;'>No specific weaknesses identified.</li>"}
-            </ul>
-        </div>
-    </div>
+                    if weaknesses or missing:
+                        st.markdown("**🔧 Areas to Improve**")
+                        for w in weaknesses:
+                            st.markdown(f"- {w}")
+                        if missing:
+                            st.markdown(f"- Missed concepts: {', '.join(missing)}")
 
-    <!-- Suggestions Card -->
-    <div style="background:#1e3a8a; padding:1.4rem; border-radius:10px; border:1px solid #1d4ed8; margin-bottom:1.5rem;">
-        <h5 style="color:#60a5fa; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">💡 Suggestions</h5>
-        <ul style="color:#dbeafe; margin:0; padding-left:1.2rem; font-size:0.95rem; line-height:1.5;">
-            {suggestions_html if suggestions_html else "<li style='opacity:0.8;'>No specific suggestions provided.</li>"}
-        </ul>
-    </div>
+                    if suggestions:
+                        st.markdown("**💡 Suggestions**")
+                        for s in suggestions:
+                            st.markdown(f"- {s}")
 
-    <!-- Ideal Answer Card -->
-    <div style="background:#4c1d95; padding:1.4rem; border-radius:10px; border:1px solid #6d28d9;">
-        <h5 style="color:#c084fc; margin:0 0 1rem 0; font-size:1.1rem; font-weight:700;">🎯 Ideal Answer & Concepts</h5>
-        <div style="color:#ede9fe; font-size:1rem; line-height:1.6;">
-            {ideal_ans_html}
-        </div>
-    </div>
-    
-</div>
-"""
-                st.markdown(card_html, unsafe_allow_html=True)
+                    ideal = fb.get("ideal_answer") or {}
+                    key_points = ideal.get("key_points") or []
+                    example = ideal.get("example") or ""
+
+                    if key_points or example:
+                        st.markdown("**🎯 Ideal Answer Outline**")
+                        if key_points:
+                            for p in key_points:
+                                st.markdown(f"- {p}")
+                        if example:
+                            st.markdown("**Example:**")
+                            st.code(example)
+
+                    st.markdown("---")
 
     # ── Tab 4: Learning path ──
     with tab4:
