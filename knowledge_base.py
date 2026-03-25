@@ -1,6 +1,6 @@
 """
 Knowledge Base System (Unit I & V)
-Stores questions, answers, and evaluation criteria
+Stores questions, answers, and evaluation criteria with FOL Rules
 """
 
 import json
@@ -13,7 +13,7 @@ class KnowledgeBase:
         self.ideal_answers = self._initialize_ideal_answers()
     
     def _initialize_questions(self) -> Dict:
-        """Initialize question bank with categories and difficulty levels"""
+        """Initialize question bank with categories, difficulty levels and FOL rules"""
         return {
             "python": {
                 "beginner": [
@@ -22,27 +22,47 @@ class KnowledgeBase:
                         "question": "What is a list in Python? Explain with example.",
                         "topic": "python",
                         "difficulty": "beginner",
-                        "difficulty_level": "beginner",
                         "keywords": ["mutable", "ordered", "sequence", "collection", "[]"],
-                        "concepts": ["mutable", "indexing", "slicing"]
+                        "concepts": ["mutable", "indexing", "slicing"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["mutable"]},
+                                    {"fn": "Explains", "args": ["indexing"]},
+                                    {"fn": "ExemplifiesCode", "args": []},
+                                    {"fn": "IsDetailed", "args": [25]}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            },
+                            {
+                                "type": "PartialAnswer", 
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["list"]},
+                                    {"fn": "IsDetailed", "args": [10]}
+                                ],
+                                "connective": "AND", "weight": 0.5
+                            }
+                        ]
                     },
                     {
                         "id": 2,
                         "question": "What is the difference between tuple and list?",
                         "topic": "python",
                         "difficulty": "beginner",
-                        "difficulty_level": "beginner",
                         "keywords": ["immutable", "mutable", "faster", "parentheses", "brackets"],
-                        "concepts": ["immutability", "performance", "syntax"]
-                    },
-                    {
-                        "id": 3,
-                        "question": "Explain if-else statement with example.",
-                        "topic": "python",
-                        "difficulty": "beginner",
-                        "difficulty_level": "beginner",
-                        "keywords": ["condition", "branch", "elif", "else", "indentation"],
-                        "concepts": ["conditional", "flow control", "boolean"]
+                        "concepts": ["immutability", "performance", "syntax"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["immutable"]},
+                                    {"fn": "Defines", "args": ["tuple"]},
+                                    {"fn": "IsDetailed", "args": [30]}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            }
+                        ]
                     }
                 ],
                 "intermediate": [
@@ -51,18 +71,19 @@ class KnowledgeBase:
                         "question": "Explain decorators in Python with example.",
                         "topic": "python",
                         "difficulty": "intermediate",
-                        "difficulty_level": "intermediate",
                         "keywords": ["@", "wrapper", "function", "modify", "behavior"],
-                        "concepts": ["higher-order functions", "syntax sugar", "metaprogramming"]
-                    },
-                    {
-                        "id": 5,
-                        "question": "What is list comprehension? Provide examples.",
-                        "topic": "python",
-                        "difficulty": "intermediate",
-                        "difficulty_level": "intermediate",
-                        "keywords": ["concise", "create", "transform", "filter", "syntax"],
-                        "concepts": ["functional", "iteration", "expression"]
+                        "concepts": ["higher-order functions", "metaprogramming"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["@"]},
+                                    {"fn": "Explains", "args": ["wrapper"]},
+                                    {"fn": "ExemplifiesCode", "args": []}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            }
+                        ]
                     }
                 ],
                 "advanced": [
@@ -71,18 +92,19 @@ class KnowledgeBase:
                         "question": "Explain generators and yield keyword.",
                         "topic": "python",
                         "difficulty": "advanced",
-                        "difficulty_level": "advanced",
                         "keywords": ["iterator", "lazy", "memory", "yield", "state"],
-                        "concepts": ["lazy evaluation", "memory efficiency", "iteration protocol"]
-                    },
-                    {
-                        "id": 101,
-                        "question": "Explain metaclasses in Python and their use cases.",
-                        "topic": "python",
-                        "difficulty": "advanced",
-                        "difficulty_level": "advanced",
-                        "keywords": ["type", "class", "metaclass", "behavior", "singleton"],
-                        "concepts": ["metaprogramming", "class creation", "object model"]
+                        "concepts": ["lazy evaluation", "iteration protocol"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["yield"]},
+                                    {"fn": "Explains", "args": ["lazy"]},
+                                    {"fn": "IsDetailed", "args": [40]}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            }
+                        ]
                     }
                 ]
             },
@@ -93,257 +115,130 @@ class KnowledgeBase:
                         "question": "What is SQL and what are its main types of commands?",
                         "topic": "sql",
                         "difficulty": "beginner",
-                        "difficulty_level": "beginner",
                         "keywords": ["database", "DDL", "DML", "DCL", "query"],
-                        "concepts": ["data definition", "data manipulation", "data control"]
+                        "concepts": ["data definition", "data manipulation"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["DDL"]},
+                                    {"fn": "Contains", "args": ["DML"]},
+                                    {"fn": "IsDetailed", "args": [20]}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            }
+                        ]
+                    }
+                ]
+            },
+            "java": {
+                "beginner": [
+                    {
+                        "id": 201,
+                        "question": "What is JVM and how does it provide platform independence?",
+                        "topic": "java",
+                        "difficulty": "beginner",
+                        "keywords": ["Virtual Machine", "bytecode", "compiled", "platform"],
+                        "concepts": ["JVM architecture", "platform independence"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["bytecode"]},
+                                    {"fn": "Explains", "args": ["JVM"]},
+                                    {"fn": "IsDetailed", "args": [30]}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            }
+                        ]
                     },
                     {
-                        "id": 8,
-                        "question": "Explain SELECT statement with example.",
-                        "topic": "sql",
+                        "id": 202,
+                        "question": "What are the core principles of OOP in Java?",
+                        "topic": "java",
                         "difficulty": "beginner",
-                        "difficulty_level": "beginner",
-                        "keywords": ["SELECT", "FROM", "WHERE", "retrieve", "data"],
-                        "concepts": ["projection", "selection", "filtering"]
-                    }
-                ],
-                "intermediate": [
-                    {
-                        "id": 9,
-                        "question": "What is JOIN? Explain different types of JOINs.",
-                        "topic": "sql",
-                        "difficulty": "intermediate",
-                        "difficulty_level": "intermediate",
-                        "keywords": ["INNER", "LEFT", "RIGHT", "FULL", "combine"],
-                        "concepts": ["relational algebra", "table relationships", "foreign keys"]
-                    }
-                ],
-                "advanced": [
-                    {
-                        "id": 102,
-                        "question": "Explain window functions and how they differ from GROUP BY.",
-                        "topic": "sql",
-                        "difficulty": "advanced",
-                        "difficulty_level": "advanced",
-                        "keywords": ["over", "partition", "rank", "row_number", "aggregate"],
-                        "concepts": ["window functions", "aggregation", "analytic functions"]
+                        "keywords": ["encapsulation", "inheritance", "polymorphism", "abstraction"],
+                        "concepts": ["OOP principles", "Object interaction"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["inheritance"]},
+                                    {"fn": "Contains", "args": ["polymorphism"]},
+                                    {"fn": "IsDetailed", "args": [35]}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            }
+                        ]
                     }
                 ]
             },
             "dsa": {
                 "beginner": [
                     {
-                        "id": 10,
-                        "question": "What is an array? Explain time complexity of array operations.",
+                        "id": 301,
+                        "question": "What is Big O notation and why is it important?",
                         "topic": "dsa",
                         "difficulty": "beginner",
-                        "difficulty_level": "beginner",
-                        "keywords": ["contiguous", "memory", "index", "O(1)", "O(n)"],
-                        "concepts": ["random access", "time complexity", "memory allocation"]
-                    }
-                ],
-                "intermediate": [
-                    {
-                        "id": 11,
-                        "question": "Explain binary search algorithm with example.",
-                        "topic": "dsa",
-                        "difficulty": "intermediate",
-                        "difficulty_level": "intermediate",
-                        "keywords": ["divide", "conquer", "sorted", "logarithmic", "mid"],
-                        "concepts": ["divide and conquer", "searching", "logarithmic time"]
-                    }
-                ],
-                "advanced": [
-                    {
-                        "id": 103,
-                        "question": "Explain dynamic programming and the concept of memoization.",
-                        "topic": "dsa",
-                        "difficulty": "advanced",
-                        "difficulty_level": "advanced",
-                        "keywords": ["overlapping", "subproblems", "optimal", "cache", "bottom-up"],
-                        "concepts": ["dynamic programming", "memoization", "optimization"]
-                    }
-                ]
-            },
-            "javascript": {
-                "beginner": [
-                    {
-                        "id": 12,
-                        "question": "What is JavaScript and how is it different from Java?",
-                        "topic": "javascript",
-                        "difficulty": "beginner",
-                        "difficulty_level": "beginner",
-                        "keywords": ["scripting", "dynamic", "browser", "interpreted", "prototype"],
-                        "concepts": ["interpreted language", "client-side", "dynamic typing"]
+                        "keywords": ["complexity", "time", "space", "scaling", "asymptotic"],
+                        "concepts": ["algorithm analysis", "performance scaling"],
+                        "fol_rules": [
+                            {
+                                "type": "GoodAnswer",
+                                "predicates": [
+                                    {"fn": "Contains", "args": ["complexity"]},
+                                    {"fn": "Explains", "args": ["scaling"]},
+                                    {"fn": "IsDetailed", "args": [25]}
+                                ],
+                                "connective": "AND", "weight": 1.0
+                            }
+                        ]
                     }
                 ]
             }
         }
     
     def _initialize_topics(self) -> Dict:
-        """Initialize topic relationships for adaptive learning"""
         return {
-            "python": {
-                "prerequisites": ["basic programming concepts"],
-                "core_topics": ["data_structures", "control_flow", "functions", "OOP"],
-                "advanced_topics": ["decorators", "generators", "context managers"],
-                "difficulty_progression": {
-                    "beginner": ["data_structures", "control_flow"],
-                    "intermediate": ["functions", "OOP", "modules"],
-                    "advanced": ["decorators", "generators", "metaprogramming"]
-                }
-            },
-            "sql": {
-                "prerequisites": ["database concepts"],
-                "core_topics": ["basics", "queries", "filtering"],
-                "advanced_topics": ["joins", "subqueries", "indexes", "optimization"],
-                "difficulty_progression": {
-                    "beginner": ["basics", "simple queries"],
-                    "intermediate": ["joins", "subqueries", "aggregation"],
-                    "advanced": ["optimization", "stored procedures", "triggers"]
-                }
-            }
+            "python": {"prerequisites": [], "core_topics": ["basics"]},
+            "sql": {"prerequisites": [], "core_topics": ["queries"]},
+            "java": {"prerequisites": [], "core_topics": ["JVM", "OOP"]},
+            "dsa": {"prerequisites": [], "core_topics": ["Big O"]}
         }
     
     def _initialize_ideal_answers(self) -> Dict:
-        """Store ideal answer structures for evaluation"""
         return {
-            1: {
-                "key_points": [
-                    "List is a mutable data structure",
-                    "It maintains order of elements",
-                    "Can contain mixed data types",
-                    "Defined using square brackets []",
-                    "Supports indexing and slicing"
-                ],
-                "example": "my_list = [1, 2, 'hello', 3.14]",
-                "common_mistakes": [
-                    "Confusing with tuples (immutability)",
-                    "Wrong syntax with parentheses"
-                ]
-            },
-            2: {
-                "key_points": [
-                    "List is mutable, tuple is immutable",
-                    "List uses [], tuple uses ()",
-                    "Tuples are faster for iteration",
-                    "Tuples can be used as dictionary keys"
-                ],
-                "example": "list_ex = [1,2,3]\ntuple_ex = (1,2,3)",
-                "common_mistakes": [
-                    "Trying to modify tuple elements",
-                    "Using wrong brackets"
-                ]
-            },
-            3: {
-                "key_points": [
-                    "Used for conditional execution",
-                    "Syntax: if condition: block",
-                    "Can have elif for multiple conditions",
-                    "else for default case",
-                    "Proper indentation is crucial"
-                ],
-                "example": "if x > 0:\n    print('positive')\nelif x < 0:\n    print('negative')\nelse:\n    print('zero')",
-                "common_mistakes": [
-                    "Missing colon after condition",
-                    "Wrong indentation",
-                    "Using assignment (=) instead of comparison (==)"
-                ]
-            }
+            1: {"key_points": ["Mutable", "Ordered"], "example": "[]"},
+            201: {"key_points": ["Bytecode", "Write once run anywhere"], "example": "java MyClass.class"},
+            301: {"key_points": ["Asymptotic notation", "Performance measurement"], "example": "O(n)"}
         }
-    
-    # ============= FIXED METHOD WITH CORRECT INDENTATION =============
-    def get_questions_by_topic(self, topic: str, level: str) -> List:
-        """Get questions for specific topic and difficulty level"""
-        try:
-            # Check if topic exists
-            if topic in self.questions:
-                # Check if level exists for that topic
-                if level in self.questions[topic]:
-                    return self.questions[topic][level]
-            
-            # Try case-insensitive match
-            for t in self.questions:
-                if t.lower() == topic.lower():
-                    if level in self.questions[t]:
-                        return self.questions[t][level]
-            
-            # If no exact match, return empty list
-            return []
-            
-        except Exception as e:
-            print(f"Error in get_questions_by_topic: {e}")
-            return []  # Return empty list on error, not [1]
-    
-    def get_question_by_id(self, q_id: int) -> Dict:
-        """Retrieve specific question by ID"""
+
+    def get_all_questions(self) -> List:
+        res = []
         for topic in self.questions:
             for level in self.questions[topic]:
-                for q in self.questions[topic][level]:
-                    if q["id"] == q_id:
-                        return q
-        return None
-    
-    def get_ideal_answer(self, q_id: int) -> Dict:
-        """Get ideal answer structure for a question"""
-        return self.ideal_answers.get(q_id, {
-            "key_points": [],
-            "example": "",
-            "common_mistakes": []
-        })
+                res.extend(self.questions[topic][level])
+        return res
 
+    def get_questions_by_topic(self, topic: str, level: str) -> List:
+        t_key = topic.lower()
+        if t_key in self.questions:
+            return self.questions[t_key].get(level.lower(), [])
+        return []
+
+    def get_question_by_id(self, q_id: int) -> Dict:
+        for q in self.get_all_questions():
+            if q["id"] == q_id or str(q["id"]) == str(q_id):
+                return q
+        return None
 
     def explore_topics_bfs(self) -> List[Dict]:
-        """
-        Unit II: Uninformed Search - Breadth-First Search (BFS)
-        Traverses the knowledge base tree level by level.
-        Tree Structure: Root -> Topics -> Difficulties -> Questions
-        """
-        queue = []
-        result = []
-        
-        # Enqueue Root
-        queue.append({
-            "level": "root", 
-            "name": "Knowledge Base Data", 
-            "children": list(self.questions.keys())
-        })
-        
-        while queue:
-            node = queue.pop(0)
-            result.append(node)
-            
-            if node["level"] == "root":
-                for topic in node["children"]:
-                    queue.append({
-                        "level": "topic",
-                        "name": topic.upper(),
-                        "parent": "root",
-                        "children": list(self.questions[topic].keys())
-                    })
-                    
-            elif node["level"] == "topic":
-                topic = node["name"].lower()
-                for diff in node["children"]:
-                    queue.append({
-                        "level": "difficulty",
-                        "name": diff.capitalize(),
-                        "parent": topic,
-                        "children": self.questions[topic][diff]
-                    })
-                    
-            elif node["level"] == "difficulty":
-                topic = node["parent"]
-                diff = node["name"].lower()
-                for q in node["children"]:
-                    queue.append({
-                        "level": "question",
-                        "id": q["id"],
-                        "name": q["question"],
-                        "parent": f"{topic} -> {diff}",
-                        "topic": topic,
-                        "difficulty": diff
-                    })
-                    
-        return result
-
+        """Unit II: BFS Tree traversal representation"""
+        nodes = []
+        for topic in self.questions:
+            nodes.append({"name": topic.upper(), "level": "topic"})
+            for diff in self.questions[topic]:
+                nodes.append({"name": diff.capitalize(), "level": "difficulty"})
+                for q in self.questions[topic][diff]:
+                    nodes.append({"name": q["question"], "id": q["id"], "level": "question"})
+        return nodes

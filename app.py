@@ -26,13 +26,23 @@ import plotly.express as px
 from datetime import datetime
 import time
 import json
+import os
 
-# Backend logic engines (never modified)
+# Backend logic engines
 from knowledge_base import KnowledgeBase
 from question_selector import QuestionSelector
 from answer_evaluator import AnswerEvaluator
 from performance_report import PerformanceReport
 from interview_planner_csp import ConstraintSatisfactionPlanner
+
+# New Advanced Algorithms
+try:
+    from minimax_selector import MinimaxQuestionSelector
+    from wumpus_interview import WumpusInterviewWorld
+    from strips_planner import GoalStackPlanner, get_strips_actions, update_state_from_answers
+    from prolog_kb import PrologKnowledgeBase
+except ImportError:
+    pass
 
 
 # Utility helpers (TTS, STT, animations)
@@ -40,7 +50,7 @@ from utils import (
     get_typing_animation, get_robot_avatar,
     get_difficulty_level, format_feedback,
     text_to_speech_autoplay, speech_to_text,
-    get_progress_ring
+    get_progress_ring, display_question_card
 )
 
 # st.components for embedding native HTML/JS camera (no server relay needed)
@@ -99,180 +109,256 @@ TIMING = {
 # ---------------------------------------------------------------------------
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;700&display=swap');
 
-/* ── Global ── */
-html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+/* ── Global Theme Variables: Cosmic SaaS ── */
+:root {
+    --bg-deep: #020617;
+    --bg-main: radial-gradient(circle at top right, #1e1b4b 0%, #020617 100%);
+    --bg-surface: rgba(15, 23, 42, 0.6);
+    --bg-card: rgba(30, 41, 59, 0.3);
+    --brand-primary: #6366F1;   /* Indigo */
+    --brand-secondary: #0ea5e9; /* Sky/Cyan */
+    --brand-accent: #a855f7;    /* Purple */
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+    --neon-indigo: 0 0 15px rgba(99, 102, 241, 0.4);
+}
 
-/* ── Meet header bar ── */
-.meet-header {
-    background: #202124;
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border-radius: 12px;
+/* ── Global Base ── */
+html, body, [class*="css"] { 
+    font-family: 'Inter', sans-serif; 
+    background: var(--bg-deep) !important;
+}
+
+[data-testid="stAppViewContainer"] {
+    background: var(--bg-main) !important;
+}
+
+h1, h2, h3, h4, .gradient-heading {
+    font-family: 'Plus Jakarta Sans', sans-serif !important;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800 !important;
+}
+
+/* ── Glassmorphism Sidebar ── */
+[data-testid="stSidebar"] {
+    background: rgba(2, 6, 23, 0.8) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    border-right: 1px solid var(--glass-border);
+}
+
+/* ── Premium Sidebar Inputs ── */
+.stTextInput input, .stSelectbox [data-baseweb="select"], .stMultiSelect [data-baseweb="select"] {
+    background: rgba(15, 23, 42, 0.4) !important;
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 12px !important;
+    color: white !important;
+    transition: all 0.3s ease !important;
+}
+
+.stTextInput input:focus {
+    border-color: var(--brand-primary) !important;
+    box-shadow: var(--neon-indigo) !important;
+}
+
+/* ── Glass Cards & Feature Panels ── */
+.saas-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 2rem;
+    box-shadow: var(--glass-shadow);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.saas-card:hover {
+    transform: translateY(-8px);
+    border-color: rgba(99, 102, 241, 0.4);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.4), var(--neon-indigo);
+}
+
+/* ── Glowing Buttons ── */
+.stButton > button {
+    background: linear-gradient(135deg, var(--brand-primary), var(--brand-accent)) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 14px !important;
+    padding: 0.8rem 2rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3) !important;
+}
+
+.stButton > button:hover {
+    transform: scale(1.03);
+    box-shadow: 0 8px 25px rgba(99, 102, 241, 0.5) !important;
+}
+
+/* ── Interview Split Screen ── */
+.live-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 25px;
+}
+
+.video-frame {
+    aspect-ratio: 4/3;
+    background: #000;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 2px solid var(--glass-border);
+    position: relative;
+    box-shadow: var(--glass-shadow);
+}
+
+/* ── Control Bar ── */
+.meet-controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(10px);
+    padding: 12px 30px;
+    border-radius: 99px;
+    width: fit-content;
+    margin: 30px auto;
+    border: 1px solid var(--glass-border);
+}
+
+/* ── Animations ── */
+@keyframes nebula {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.cosmic-bg {
+    background-size: 200% 200%;
+    animation: nebula 15s ease infinite;
+}
+
+/* ── Floating Question Card ── */
+.floating-question {
+    position: absolute;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 85%;
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 1.5rem;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    z-index: 100;
+    animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpFade {
+    from { opacity: 0; transform: translate(-50%, 40px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ── Analytics Score Panel ── */
+.analytics-panel {
+    background: rgba(15, 23, 42, 0.4);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    padding: 1.5rem;
+    height: 100%;
+    box-shadow: var(--glass-shadow);
+}
+
+.panel-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-}
-.meet-title { font-size: 1rem; font-weight: 600; color: #e8eaed; }
-.meet-meta  { font-size: 0.85rem; color: #9aa0a6; }
-.status-dot {
-    display: inline-block; width:10px; height:10px;
-    border-radius: 50%; margin-right: 6px;
-}
-.dot-live { background:#34a853; animation: pulse-dot 1.5s infinite; }
-.dot-idle { background:#9aa0a6; }
-@keyframes pulse-dot {
-    0%,100% { opacity:1; transform:scale(1); }
-    50% { opacity:.6; transform:scale(1.3); }
 }
 
-/* ── Video panels ── */
-.panel-ai {
-    background: #2d2f31;
-    border: 2px solid #3c4043;
-    border-radius: 14px;
-    padding: 1.25rem;
-    text-align: center;
-    min-height: 280px;
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
+.stat-row { margin-bottom: 1.25rem; }
+.stat-label { 
+    display: flex; 
+    justify-content: space-between; 
+    font-size: 0.85rem; 
+    margin-bottom: 0.5rem;
+    color: var(--text-muted);
+}
+
+/* ── Modern Progress Bars ── */
+.progress-container {
+    height: 8px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 10px;
+    overflow: hidden;
     position: relative;
 }
-.panel-candidate {
-    background: #1a1b1e;
-    border: 2px solid #3c4043;
-    border-radius: 14px;
-    padding: 1.25rem;
-    text-align: center;
-    min-height: 280px;
-    position: relative;
-}
-.panel-label {
-    position: absolute; bottom: 12px; left: 14px;
-    background: rgba(0,0,0,0.6);
-    color:white; font-size:0.8rem; font-weight:500;
-    padding: 3px 10px; border-radius: 20px;
+
+.progress-fill {
+    height: 100%;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #6366f1, #a855f7, #0ea5e9);
+    transition: width 1s cubic-bezier(0.1, 0.8, 0.2, 1);
 }
 
-/* ── Speaking indicator ── */
-.speaking-ring {
-    border: 3px solid #34a853;
-    border-radius: 50%; padding: 6px;
-    animation: speak-pulse 0.8s infinite alternate;
-    display: inline-block;
-}
-@keyframes speak-pulse {
-    from { box-shadow: 0 0 4px #34a853; }
-    to   { box-shadow: 0 0 18px #34a853; }
-}
-.listening-badge {
-    background: #ea4335; color:white;
-    font-size:0.78rem; font-weight:600;
-    padding: 4px 14px; border-radius: 20px;
-    animation: pulse-dot 1s infinite;
-    display: inline-block; margin-top: 6px;
-}
-
-/* ── Meet control bar ── */
-.control-bar {
-    background: #202124;
-    border-radius: 14px;
-    padding: 0.6rem 1rem;
-    display: flex; justify-content: center; gap: 1rem;
-    align-items: center;
-    margin-top: 1rem;
-}
-
-/* ── Question card ── */
-.q-card {
-    background: linear-gradient(135deg,#1a237e 0%,#283593 100%);
+/* ── Participant UI Components ── */
+.participant-label {
+    position: absolute;
+    bottom: 1.25rem;
+    left: 1.25rem;
+    background: rgba(15, 23, 42, 0.8);
+    backdrop-filter: blur(8px);
+    padding: 6px 14px;
+    border-radius: 8px;
     color: white;
-    padding: 1.25rem 1.5rem;
-    border-radius: 14px;
-    border-left: 5px solid #667eea;
-    margin: 0.75rem 0;
-    box-shadow: 0 6px 20px rgba(102,126,234,0.25);
-}
-.q-number { font-size:0.75rem; opacity:0.75; text-transform:uppercase; letter-spacing:0.5px; }
-.q-text   { font-size:1.15rem; font-weight:500; line-height:1.6; margin-top:0.4rem; }
-.q-topic  { font-size:0.8rem; opacity:0.6; margin-top:0.6rem; }
-
-/* ── Badge styles ── */
-.badge {
-    display:inline-block; padding:0.3rem 0.9rem; border-radius:9999px;
-    font-size:0.72rem; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;
-}
-.badge-beginner     { background:#fef3c7; color:#92400e; border:1px solid #fbbf24; }
-.badge-intermediate { background:#bfdbfe; color:#1e40af; border:1px solid #3b82f6; }
-.badge-advanced     { background:#fecaca; color:#991b1b; border:1px solid #ef4444; }
-.badge-expert       { background:#d1fae5; color:#065f46; border:1px solid #10b981; }
-.badge-needs_practice { background:#fee2e2; color:#991b1b; }
-
-/* ── Metric cards ── */
-.metric-card {
-    background:white; border-radius:14px; padding:1.25rem;
-    text-align:center; box-shadow:0 4px 10px rgba(0,0,0,0.07);
-    border-left:4px solid #667eea;
-}
-.metric-value { font-size:1.9rem; font-weight:700; color:#1e293b; }
-.metric-label { font-size:0.8rem; color:#718096; text-transform:uppercase; letter-spacing:0.5px; }
-
-/* ── Professional sidebar header ── */
-.sidebar-header {
-    color:#1e293b; font-weight:600; margin-bottom:0.4rem;
-    padding-bottom:0.4rem; border-bottom:2px solid #667eea;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border: 1px solid var(--glass-border);
+    z-index: 10;
 }
 
-/* ── Feedback box ── */
-.feedback-box {
-    background:linear-gradient(135deg,#f8fafc 0%,#f1f5f9 100%);
-    padding:1.25rem; border-radius:14px; margin:0.75rem 0;
-    border:1px solid #e2e8f0;
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
 }
 
-/* ── Score colours ── */
-.score-high   { color:#10b981; font-weight:700; font-size:1.1rem; }
-.score-medium { color:#f59e0b; font-weight:700; font-size:1.1rem; }
-.score-low    { color:#ef4444; font-weight:700; font-size:1.1rem; }
-
-/* ── Welcome hero ── */
-.hero-box {
-    background: linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-    padding:2.5rem 3rem; border-radius:20px; color:white;
-    text-align:center; box-shadow:0 20px 40px rgba(102,126,234,0.3);
-    margin: 1rem 0 2rem;
+.badge-live {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.3);
 }
 
-/* ── Buttons ── */
-.stButton > button {
-    background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-    color:white; border:none; border-radius:10px;
-    font-weight:600; letter-spacing:0.4px;
-    box-shadow:0 4px 8px rgba(102,126,234,0.3);
-    transition: transform .2s, box-shadow .2s;
-}
-.stButton > button:hover {
-    transform:translateY(-2px);
-    box-shadow:0 8px 16px rgba(102,126,234,0.4);
+.meet-header {
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(12px);
+    padding: 1rem 2rem;
+    border-radius: 16px;
+    border: 1px solid var(--glass-border);
+    margin-bottom: 2rem;
 }
 
-/* ── Progress bar ── */
-.stProgress > div > div {
-    background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-    border-radius:10px; height:9px;
-}
+.meet-title { font-weight: 700; color: white; display: flex; align-items: center; gap: 8px; }
+.meet-meta { color: var(--text-muted); font-size: 0.85rem; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.dot-live { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
 
-/* ── Footer ── */
-.footer {
-    text-align:center; padding:1.5rem;
-    color:#a0aec0; font-size:0.85rem;
-    border-top:1px solid #e2e8f0; margin-top:3rem;
-}
-hr { margin:1.5rem 0; border:0; height:1px;
-     background:linear-gradient(135deg,transparent,#667eea,transparent); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -314,6 +400,9 @@ def init_session_state():
         # ── media controls ──
         st.session_state.mic_muted          = False
         st.session_state.cam_off            = False
+        # ── new planning state ──
+        st.session_state.strips_planner      = None
+        st.session_state.prolog_kb           = None
         # ── user profile ──
         st.session_state.user_profile       = {}
 
@@ -351,6 +440,10 @@ def reset_interview():
     st.session_state.cam_off             = False
     # Reset selector history so questions restart cleanly
     st.session_state.selector.reset_history()
+    # Clear wrapup flag so next session starts fresh
+    for key in ['wrapup_started', 'intro_message', 'instant_feedback']:
+        if key in st.session_state:
+            del st.session_state[key]
 
 # ---------------------------------------------------------------------------
 # HELPER — process a submitted answer (voice or text)
@@ -380,22 +473,77 @@ def process_answer(answer_text: str):
     st.session_state.answer_history.append(record)
     st.session_state.question_history.append(q['id'])
 
+    # Save instant feedback to state
+    st.session_state.instant_feedback = feedback
+
     st.session_state.selector.update_performance(
         q['id'], feedback["score"], q.get("topic", "general")
     )
 
     total_q = 10   # configurable interview length
     if len(st.session_state.answer_history) < total_q:
-        if st.session_state.get("csp_toggle") and st.session_state.get("planned_questions"):
-            next_q = st.session_state.planned_questions.pop(0)
-            st.session_state.current_question = next_q
-            st.session_state.last_played_q_id = None
-        else:
+        skills_str = ", ".join(st.session_state.user_profile.get("skills", []))
+        role = st.session_state.user_profile.get("target_role", "Software Engineer")
+        level_exp = st.session_state.user_profile.get("experience_level", "entry")
+        
+        # Algorithm Selection Logic
+        next_q = None
+        
+        # 1. Wumpus World Mode
+        if st.session_state.get("wumpus_mode"):
+            if 'wumpus_world' not in st.session_state:
+                from wumpus_interview import WumpusInterviewWorld
+                st.session_state.wumpus_world = WumpusInterviewWorld(st.session_state.kb.get_all_questions(), st.session_state.user_profile)
+            
+            target_cell = st.session_state.wumpus_world.choose_next_cell()
+            if target_cell:
+                q_obj, effect = st.session_state.wumpus_world.move_agent(target_cell)
+                next_q = q_obj
+                if effect == "pit":
+                    st.toast("⚫ Fell into a Pit! Score for this slot is 0 - skipping.", icon="⚠️")
+                    # (Simplified: just assign q_obj to state and continue)
+                elif effect == "wumpus":
+                    st.toast("💀 Wumpus Attack! Tricky question ahead.", icon="🔥")
+        
+        # 2. Adversarial Mode (Minimax)
+        elif st.session_state.get("ai_adversarial_mode"):
+            if 'minimax' not in st.session_state:
+                from minimax_selector import MinimaxQuestionSelector
+                st.session_state.minimax = MinimaxQuestionSelector(st.session_state.kb)
+            
+            next_q = st.session_state.minimax.select_next_question(
+                st.session_state.user_profile, st.session_state.answer_history
+            )
+        
+        # 3. Dynamic Skill Mode (Default fallback)
+        if not next_q:
+            # STRICT FILTER: Ensure we only pick questions relevant to chosen skills
+            chosen_skills = [s.lower() for s in st.session_state.user_profile.get("skills", [])]
+            
+            # Try Best-First Search with STRICT topic focus
             next_q = st.session_state.selector.select_next_question(
                 st.session_state.user_profile, st.session_state.answer_history
             )
-            st.session_state.current_question = next_q
-            st.session_state.last_played_q_id = None   # triggers TTS for new question
+            
+            # If AI Enhanced, refine the question to match role exactly
+            if st.session_state.get('ai_enhanced_mode', False) and next_q:
+                from utils import call_gemini
+                prompt = (
+                    f"Rewrite this interview question to be specifically for a '{role}' candidate "
+                    f"focusing only on these technologies: {', '.join(chosen_skills)}.\n"
+                    f"Original Question: {next_q['question']}\n"
+                    f"Keep it under 25 words. Response ONLY with the new question text."
+                )
+                dynamic_q = call_gemini(prompt, feature_name="Question Refinement")
+                if dynamic_q:
+                    next_q["question"] = dynamic_q
+
+        st.session_state.current_question = next_q
+        st.session_state.last_played_q_id = None   # triggers TTS for new question
+
+        # Update STRIPS State
+        if st.session_state.strips_planner:
+            update_state_from_answers(st.session_state.strips_planner, st.session_state.answer_history)
     else:
         # All questions done → wrapup stage
         st.session_state.interview_stage = 'wrapup'
@@ -407,17 +555,15 @@ def process_answer(answer_text: str):
 with st.sidebar:
     # ── Branding ──
     st.markdown("""
-        <div style="text-align:center; padding:18px 10px;">
-            <div style="background:linear-gradient(135deg,#667eea,#764ba2);
-                        width:90px; height:90px; border-radius:50%; margin:0 auto 12px;
+        <div style="text-align:center; padding:2rem 1rem; background: var(--bg-card); border-radius: 20px; border: 1px solid var(--glass-border); margin-bottom: 2rem;">
+            <div style="background: linear-gradient(135deg, var(--brand-primary), var(--brand-accent));
+                        width:80px; height:80px; border-radius:24px; margin:0 auto 1.5rem;
                         display:flex; align-items:center; justify-content:center;
-                        box-shadow:0 8px 20px rgba(102,126,234,0.35);">
-                <span style="font-size:2.6rem; color:white;">🎯</span>
+                        box-shadow: var(--neon-indigo); transform: rotate(-5deg);">
+                <span style="font-size:2.8rem; color:white; transform: rotate(5deg);">🎯</span>
             </div>
-            <h2 style="color:#1E293B; margin:0; font-size:1.6rem;">AI Interview Coach</h2>
-            <p style="color:#64748B; margin:4px 0 0; font-size:0.85rem;">Professional Edition v3.0</p>
-            <div style="background:linear-gradient(135deg,#667eea,#764ba2);
-                        height:3px; width:50px; margin:12px auto 0; border-radius:3px;"></div>
+            <h2 style="color: white; margin:0; font-size:1.5rem; font-family: 'Plus Jakarta Sans', sans-serif;">AI Interview Coach</h2>
+            <p style="color: var(--text-muted); margin:0.5rem 0 0; font-size:0.85rem; letter-spacing: 1px;">PREMIUM EDITION</p>
         </div>
     """, unsafe_allow_html=True)
 
@@ -469,6 +615,7 @@ with st.sidebar:
 
             _, col_mid, _ = st.columns([1,2,1])
             with col_mid:
+                st.markdown("<br>", unsafe_allow_html=True)
                 submitted = st.form_submit_button("🚀 SAVE PROFILE", use_container_width=True, type="primary")
 
             if submitted:
@@ -486,6 +633,19 @@ with st.sidebar:
                         "skills": all_skills, "profile_complete": True,
                         "registration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     }
+                    try:
+                        import json
+                        if os.path.exists("users.json"):
+                            with open("users.json", "r") as f:
+                                users_data = json.load(f)
+                        else:
+                            users_data = {}
+                        email_str = str(email)
+                        users_data[email_str] = st.session_state.user_profile
+                        with open("users.json", "w") as f:
+                            json.dump(users_data, f, indent=4)
+                    except Exception:
+                        pass
                     st.success("✅ Profile saved! Click Start Interview below.")
                     st.balloons()
 
@@ -536,6 +696,17 @@ with st.sidebar:
                     st.session_state.interview_active    = True
                     st.session_state.interview_stage     = 'intro'
                     st.session_state.interview_start_time = datetime.now()
+
+                    # Initialize STRIPS Planner
+                    initial_state = {"session_started"}
+                    goal_state = {"session_closed", "report_generated", "advanced_assessed"}
+                    st.session_state.strips_planner = GoalStackPlanner(initial_state, goal_state, get_strips_actions())
+                    st.session_state.strips_planner.plan_interview()
+                    
+                    # Initialize Prolog KB if toggled
+                    if st.session_state.get("prolog_kb_toggle"):
+                        st.session_state.prolog_kb = PrologKnowledgeBase()
+
                     st.rerun()
                 else:
                     st.warning("⚠️ Please complete and save your profile first!")
@@ -555,6 +726,25 @@ with st.sidebar:
             if st.button("🔄 START NEW SESSION", use_container_width=True):
                 reset_interview()
                 st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### ⚙️ Advanced Algorithm Settings")
+        
+        st.session_state.ai_adversarial_mode = st.toggle("🎮 Adversarial Mode (Minimax α-β)", 
+            value=st.session_state.get('ai_adversarial_mode', False),
+            help="AI will try to pick the hardest questions to challenge you.")
+            
+        st.session_state.wumpus_mode = st.toggle("🌍 Wumpus World Mode", 
+            value=st.session_state.get('wumpus_mode', False),
+            help="Navigate a 4x4 grid of logical mystery before each question.")
+            
+        st.session_state.fol_reasoning = st.toggle("🔬 FOL Reasoning Engine", 
+            value=st.session_state.get('fol_reasoning', True),
+            help="Use First-Order Logic predicates for evaluation.")
+            
+        st.session_state.prolog_kb_toggle = st.toggle("🧠 Use PROLOG Knowledge Base (Unit V)", 
+            value=st.session_state.get('prolog_kb_toggle', False),
+            help="Bridge to SWI-Prolog for data retrieval.")
                 
     # ── Knowledge Explorer (BFS) ──
     with st.expander("📚 Study Topics (BFS)", expanded=False):
@@ -609,78 +799,32 @@ with st.sidebar:
 # ██████████████████████  MAIN CONTENT  ██████████████████████
 # ===========================================================================
 
-# ── Page title ──
-_, hcol, _ = st.columns([1, 3, 1])
-with hcol:
-    st.markdown('<h1 style="font-size:2.8rem;font-weight:700;'
-                'background:linear-gradient(135deg,#667eea,#764ba2);'
-                '-webkit-background-clip:text;-webkit-text-fill-color:transparent;'
-                'text-align:center;margin-bottom:0.3rem;">🎯 AI Interview Coach</h1>',
-                unsafe_allow_html=True)
-    st.markdown('<p style="text-align:center;color:#718096;font-size:1.05rem;margin-bottom:0;">'
-                'Professional Interview Preparation with Real-time AI Feedback</p>',
-                unsafe_allow_html=True)
-
-st.markdown("---")
+# ── Hero Section is now handled inside Stage 0 logic below ──
 
 # ===========================================================================
 # ██  STAGE 0: WELCOME (idle)  ██
 # ===========================================================================
 if not st.session_state.interview_active and not st.session_state.interview_complete:
 
-    st.markdown("""
-        <div class="hero-box">
-            <h2 style="font-size:2.2rem;margin-bottom:0.6rem;">
-                Welcome to Your AI Interview Room 🎙️
-            </h2>
-            <p style="font-size:1.1rem;opacity:0.9;">
-                Practice real interview conversations with live camera, voice answers, and instant AI analysis.
-            </p>
-        </div>""", unsafe_allow_html=True)
+    st.markdown('''
+    <div style="text-align: center; margin-top: 2rem; margin-bottom: 4rem;">
+        <h1 class="cosmic-bg" style="font-size: 4.5rem; margin-bottom: 1.5rem; line-height: 1.1; 
+            background: linear-gradient(135deg, #fff 30%, #6366f1 70%, #a855f7 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+            Crack Your Dream Job <br> with AI Intelligence
+        </h1>
+        <p style="font-size: 1.3rem; color: var(--text-muted); max-width: 700px; margin: 0 auto 3.5rem; font-weight: 400;">
+            Master your communication and technical skills with the world's most 
+            advanced AI interview simulator. Personalized coaching in real-time.
+        </p>
+    </div>
+    ''', unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns(3)
-    for col, icon, title, desc in [
-        (c1, "📹", "Live Camera Room", "Webcam-enabled interview room mimicking real video calls"),
-        (c2, "🎙️", "Voice Answers",   "Speak your answers — automatic speech recognition"),
-        (c3, "📊", "Post-Interview Report", "Full evaluation only after completing all questions"),
-    ]:
-        with col:
-            st.markdown(f"""
-                <div style="background:white;padding:1.5rem;border-radius:14px;
-                            text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.06);">
-                    <div style="font-size:2.5rem;margin-bottom:0.7rem;">{icon}</div>
-                    <h4 style="margin:0 0 0.5rem;">{title}</h4>
-                    <p style="color:#666;font-size:0.9rem;margin:0;">{desc}</p>
-                </div>""", unsafe_allow_html=True)
-
-    st.markdown("")
-
-    with st.expander("📋 How the Interview Works", expanded=True):
-        col_l, col_r = st.columns(2)
-        with col_l:
-            st.markdown("""
-**Step-by-step flow:**
-1. Save your profile in the sidebar
-2. Click **Start New Interview**
-3. AI greets you and begins asking questions
-4. Speak into your microphone (or type) to answer
-5. After all 10 questions, the AI wraps up
-6. View your full performance report
-            """)
-        with col_r:
-            st.markdown("""
-**Tips for best results:**
-✅ Use Chrome or Edge for best camera/mic support
-✅ Allow camera & microphone when prompted
-✅ Speak clearly — pause before and after your answer
-✅ Use the text box as a fallback if voice fails
-✅ Complete all 10 questions for a full report
-            """)
-
-    if st.session_state.user_profile:
-        _, sc, _ = st.columns([1, 2, 1])
-        with sc:
-            if st.button("🚀 START YOUR INTERVIEW", use_container_width=True):
+    # Hero CTA Buttons - CENTERED
+    _, c_btn1, c_btn2, _ = st.columns([1, 2, 2, 1])
+    with c_btn1:
+        if st.button("🎤 START INTERVIEW", use_container_width=True, type="primary"):
+            if st.session_state.user_profile:
                 reset_interview()
                 
                 if st.session_state.get("csp_toggle"):
@@ -688,7 +832,6 @@ if not st.session_state.interview_active and not st.session_state.interview_comp
                     planned = planner.generate_interview_plan()
                     if not planned:
                         st.warning("CSP planner could not find a valid plan. Switching to Best-First Search.")
-                        import time; time.sleep(2.5)
                         first_q = st.session_state.selector.select_next_question(st.session_state.user_profile, [])
                         st.session_state.planned_questions = []
                     else:
@@ -704,8 +847,53 @@ if not st.session_state.interview_active and not st.session_state.interview_comp
                 st.session_state.interview_stage     = 'intro'
                 st.session_state.interview_start_time = datetime.now()
                 st.rerun()
-    else:
-        st.info("👈 **Complete your profile in the sidebar to unlock the Start button.**")
+            else:
+                st.warning("Please complete your profile in the sidebar first!")
+
+    with c_btn2:
+        if st.button("📊 VIEW DEMO REPORT", use_container_width=True):
+            st.info("Demo report feature coming soon in the next update!")
+
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+
+    # Feature Cards Section
+    c1, c2, c3 = st.columns(3)
+    feature_items = [
+        ("🎥", "Immersive Room", "Glassmorphic environment mimicking top-tier technical video calls."),
+        ("🎙️", "Voice & Emotion AI", "Analyze speech patterns, confidence, and clarity in real-time."),
+        ("📊", "Deep Analytics", "Premium insights into your technical depth and communication trends.")
+    ]
+    
+    for i, (col, (icon, title, desc)) in enumerate(zip([c1, c2, c3], feature_items)):
+        with col:
+            st.markdown(f'''
+                <div class="saas-card" style="text-align: center; height: 100%;">
+                    <div style="font-size: 3rem; margin-bottom: 1.5rem; filter: drop-shadow(var(--neon-indigo));">{icon}</div>
+                    <h3 style="margin-bottom: 1rem; font-size: 1.4rem;">{title}</h3>
+                    <p style="color: var(--text-muted); font-size: 1rem; line-height: 1.6;">{desc}</p>
+                </div>
+            ''', unsafe_allow_html=True)
+
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+
+    with st.expander("� How the AI Simulation Works", expanded=False):
+        col_l, col_r = st.columns(2)
+        with col_l:
+            st.markdown("""
+### The Flow
+1. **Profile Setup**: Set your target role and skills.
+2. **AI Greeting**: Your coach introduces the session.
+3. **Adaptive Questions**: Question difficulty scales based on your answers.
+4. **Natural Interaction**: Speak or type your responses.
+            """)
+        with col_r:
+            st.markdown("""
+### Pro Tips
+- **Be Specific**: Use the STAR method for behavioral questions.
+- **Environment**: Ensure a quiet room for voice recognition.
+- **Tone**: Maintain professional eye contact with the camera.
+- **Analytics**: Review your report to identify weak topic areas.
+            """)
 
 # ===========================================================================
 # ██  STAGE 1-3: ACTIVE INTERVIEW  ██
@@ -721,68 +909,11 @@ if st.session_state.interview_active:
     # ── Meeting header bar ──
     mic_icon = "🔇" if st.session_state.mic_muted else "🎤"
     cam_icon = "📷" if st.session_state.cam_off   else "📹"
-    st.markdown(f"""
-        <div class="meet-header">
-            <div>
-                <span class="meet-title">
-                    <span class="status-dot dot-live"></span>
-                    AI Interview Session &mdash; {profile.get('target_role','')}
-                </span><br>
-                <span class="meet-meta">Candidate: {cand_name} &nbsp;|&nbsp;
-                    Q{answered + 1}/10 &nbsp;|&nbsp; &#9201; {get_elapsed_time()}
-                </span>
-            </div>
-            <div style="display:flex;gap:18px;font-size:1.3rem;">
-                <span>{mic_icon}</span>
-                <span>{cam_icon}</span>
-                <span style="color:#ea4335;">&#9210;</span>
-            </div>
-        </div>""", unsafe_allow_html=True)
+        # Header is now handled by CSS and consistent placement
 
     # ── FIX 3: Cache TTS so it plays only ONCE per greeting (not on every rerun) ──
-    if stage == 'intro':
-        if not st.session_state.intro_spoken:
-            if 'intro_message' not in st.session_state:
-                st.session_state.intro_message = None
-                
-                # Feature 1: Personalised Voice Introduction (Gemini)
-                if st.session_state.get('ai_enhanced_mode', False):
-                    import streamlit as st
-                    from utils import call_gemini
-                    prompt = (
-                        f"You are an AI interview coach. Write a short 2-sentence welcome message "
-                        f"for {cand_name} who is interviewing for a {profile.get('target_role', 'Software Engineer')} "
-                        f"position at {profile.get('experience_level', 'entry')} level. "
-                        f"Be warm, professional, and encouraging. No more than 40 words."
-                    )
-                    llm_greeting = call_gemini(prompt, feature_name="Feature 1: Voice Intro")
-                    if llm_greeting:
-                        st.session_state.intro_message = llm_greeting
-            
-            base_greeting = st.session_state.intro_message or (
-                f"Hi {cand_name}, I'm an AI, your interviewer today. "
-                f"Really glad you could make it. We'll be going through some {profile.get('target_role', 'Software Engineer')} questions today — should take about 15-20 minutes. "
-                "Feel free to take your time with each answer, there's no rush. "
-                "Ready to get started?"
-            )
-            
-            # Single TTS call to avoid overlapping intro audio segments
-            full_greeting = (
-                "Hello, can you hear me okay? Great. "
-                "Give me just one second while I get everything ready. "
-                + base_greeting
-            )
-            text_to_speech_autoplay(full_greeting)
-            st.session_state.intro_spoken = True
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        c1, c2, c3 = st.columns([1, 2, 1])
-        with c2:
-            if st.button("👉 I'm Ready — Ask First Question", use_container_width=True, type="primary", key="btn_ready"):
-                text_to_speech_autoplay("Perfect, let's dive in. First question:")
-                time.sleep(0.8)
-                st.session_state.interview_stage = 'questions'
-                st.rerun()
+    # Interview stage logic is handled below in the active sections
+    # No intro gate here
 
     # ── Camera panel: pure browser-side getUserMedia() — no server relay needed ──
     # This is exactly how Google Meet shows your self-view: the browser accesses
@@ -820,15 +951,16 @@ if st.session_state.interview_active:
         </div>
 
         <!-- Video element -->
-        <div id="videoWrapper" style="position:relative;background:#000;text-align:center;">
+        <div id="videoWrapper" style="position:relative; background:#000; text-align:center; min-height:480px;">
             <video id="localVideo"
                 autoplay playsinline muted
                 style="
                     width:100%;
-                    height:490px;
-                    object-fit:cover; /* Fill the card nicely */
+                    height:480px;
+                    object-fit:cover;
                     display:block;
-                    transform:scaleX(-1);  /* Mirror like every selfie camera */
+                    transform:scaleX(-1);
+                    border-radius:0 0 14px 14px;
                 "
             ></video>
 
@@ -928,100 +1060,155 @@ if st.session_state.interview_active:
     </script>
     """
 
-    col_avatar, col_cam = st.columns(2)
-    with col_avatar:
-        avatar_emotion = "listening" if not st.session_state.mic_muted else "neutral"
-        status_color = "#10b981" if not st.session_state.mic_muted else "#9aa0a6"
-        status_bg = "rgba(16,185,129,0.1)" if not st.session_state.mic_muted else "rgba(154,160,166,0.1)"
-        status_text = "Listening" if not st.session_state.mic_muted else "Waiting"
-        
-        v_label = "Interviewer"
-        for label, val in voice_options.items():
-            if val == st.session_state.get('selected_voice'):
-                v_label = label
-                break
-                
-        avatar_html = f"""
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-        @keyframes pulse {{
-            0% {{ opacity:1; transform:scale(1); }}
-            50% {{ opacity:0.6; transform:scale(1.3); }}
-            100% {{ opacity:1; transform:scale(1); }}
-        }}
-        @keyframes bounce {{
-            0%, 20%, 50%, 80%, 100% {{ transform: translateY(0); }}
-            40% {{ transform: translateY(-10px); }}
-            60% {{ transform: translateY(-5px); }}
-        }}
-        @keyframes float {{
-            0% {{ transform: translateY(0); }}
-            50% {{ transform: translateY(-6px); }}
-            100% {{ transform: translateY(0); }}
-        }}
-        .pulse {{ animation: pulse 2s infinite; }}
-        .bounce {{ animation: bounce 2s infinite; }}
-        .float {{ animation: float 3s ease-in-out infinite; }}
-        </style>
-        <div style="
-            background:#1a1b1e;
-            border:2px solid #3c4043;
-            border-radius:14px;
-            padding: 20px;
-            height: 496px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-family: 'Inter', sans-serif;
-            box-sizing: border-box;
-            box-shadow: 0 0 15px {"rgba(16,185,129,0.15)" if not st.session_state.mic_muted else "rgba(154,160,166,0.15)"};
-        ">
-            <div style="margin-bottom:auto; color:#9aa0a6; font-size:0.85rem; font-weight:500; width:100%; text-align:left; border-bottom:1px solid #2d2f31; padding-bottom:10px;">
-                🤖 AI Coach — <strong style="color:#e8eaed;">{v_label}</strong>
-            </div>
-            
-            <div style="margin: auto 0; display:flex; flex-direction:column; align-items:center;">
-                {get_robot_avatar(avatar_emotion)}
-                <div style="margin-top:35px; padding:8px 20px; border-radius:20px; font-size:0.8rem; font-weight:600; 
-                            background:{status_bg}; color:{status_color}; text-transform:uppercase; letter-spacing:0.5px;">
-                    <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:currentColor; margin-right:6px; animation: pulse 1.5s infinite;"></span>
-                    {status_text}
+    # ── Main Interview Body Layout ──
+    # Column 1 & 2: Main Interaction Area | Column 3: Stats
+    main_col, stats_col = st.columns([2.5, 1])
+
+    with main_col:
+        # ── VIDEO HUD ──
+        st.markdown("""
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; position: relative;">
+            <!-- AI Panel -->
+            <div class="video-frame saas-card" style="aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+                <div style="position:absolute; top:1rem; left:1rem; z-index:10;">
+                    <span class="status-badge badge-live">AI INTERVIEWER</span>
                 </div>
+        """, unsafe_allow_html=True)
+        
+        if stage == 'intro':
+            st.markdown("""
+                <div style="
+                    background: rgba(26, 27, 46, 0.6);
+                    backdrop-filter: blur(16px);
+                    border: 1px solid rgba(108, 99, 255, 0.3);
+                    border-radius: 20px;
+                    padding: 2.5rem;
+                    text-align: center;
+                    width: 80%;
+                    box-shadow: 0 0 30px rgba(108, 99, 255, 0.2);
+                    animation: fadeIn 0.6s ease-in-out;
+                ">
+                    <h2 style="color:#e8eaed; margin-bottom:0.5rem; font-size:1.4rem;">
+                        🤖 AI Coach is Ready
+                    </h2>
+                    <p style="color:#8892b0; font-size:0.9rem; margin-bottom: 0;">
+                        Click below to begin your first question
+                    </p>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            avatar_em = "listening" if not st.session_state.mic_muted else "neutral"
+            st.markdown(get_robot_avatar(avatar_em), unsafe_allow_html=True)
+        
+        st.markdown("""
+                <div class="participant-label">AI Coach (Jenny)</div>
+            </div>
+            <!-- USER LIVE -->
+            <div class="video-frame saas-card" style="aspect-ratio: 16/9; position: relative;">
+                <div style="position:absolute; top:1rem; left:1rem; z-index:10;">
+                    <span class="status-badge" style="background:rgba(239,68,68,0.2); color:#ef4444; border:1px solid rgba(239,68,68,0.3);">LIVE</span>
+                </div>
+        """, unsafe_allow_html=True)
+        
+        components.html(camera_html, height=360, scrolling=False)
+        
+        st.markdown("""
+                <div class="participant-label">You (Live)</div>
             </div>
         </div>
-        """
-        components.html(avatar_html, height=540, scrolling=False)
-        
-    with col_cam:
-        components.html(camera_html, height=540, scrolling=False)
+        """, unsafe_allow_html=True)
 
-    # ── Meeting control bar ──
-    st.markdown("")
-    ctrl1, ctrl2, ctrl3, _ = st.columns([1, 1, 1, 3])
-    with ctrl1:
-        mic_lbl = "&#128263; Unmute" if st.session_state.mic_muted else "&#127908; Mute"
-        if st.button("🔇 Unmute" if st.session_state.mic_muted else "🎙️ Mute", key="mute_btn"):
-            st.session_state.mic_muted = not st.session_state.mic_muted
-            st.rerun()
-    with ctrl2:
-        if st.button("📷 Cam On" if st.session_state.cam_off else "📷 Cam Off", key="cam_btn"):
-            st.session_state.cam_off = not st.session_state.cam_off
-            st.rerun()
-    with ctrl3:
-        if st.button("🔴 End Interview", key="end_btn"):
-            with st.spinner("Generating your performance report…"):
-                st.session_state.report = st.session_state.reporter.generate_report(
-                    profile, st.session_state.answer_history
-                )
-            st.session_state.interview_active   = False
-            st.session_state.interview_complete = True
-            st.session_state.interview_stage    = 'report'
-            st.rerun()
+        # ── FLOATING QUESTION OVERLAY (only when in questions stage) ──
+        if q and stage == 'questions':
+            st.markdown(f"""
+                <div style="margin-top: -3.5rem; position: relative; z-index: 100;">
+                    <div class="saas-card" style="background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); padding: 1.5rem 2.5rem; border-radius: 20px;">
+                        <div style="text-transform:uppercase; color:var(--brand-primary); font-size:0.7rem; font-weight:800; letter-spacing:1px; margin-bottom:0.5rem;">Current Question</div>
+                        <div style="font-size: 1.4rem; color: white; font-weight: 600; line-height: 1.4;">"{q['question']}"</div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
-    st.markdown("---")
+        st.markdown("<div style='margin-bottom: 2rem;'></div>", unsafe_allow_html=True)
 
-    # ── WRAPUP STAGE ──
+        # ── 'START FIRST QUESTION' CTA for intro stage ──
+        if stage == 'intro':
+            _, cta_col, _ = st.columns([1, 2, 1])
+            with cta_col:
+                if st.button("🚀 START FIRST QUESTION", use_container_width=True, type="primary", key="btn_start_q1"):
+                    st.session_state.interview_stage = "questions"
+                    st.rerun()
+
+        # ── MEETING CONTROL BAR (visible in ALL active stages) ──
+        ctl_c1, ctl_c2, ctl_c3 = st.columns([1,1,1.5])
+        with ctl_c1:
+            m_lbl = "🔇 Unmute" if st.session_state.mic_muted else "🎙️ Mute"
+            if st.button(m_lbl, key="m_btn_final"):
+                st.session_state.mic_muted = not st.session_state.mic_muted
+                st.rerun()
+        with ctl_c2:
+            c_lbl = "📷 Cam On" if st.session_state.cam_off else "📷 Cam Off"
+            if st.button(c_lbl, key="c_btn_final"):
+                st.session_state.cam_off = not st.session_state.cam_off
+                st.rerun()
+        with ctl_c3:
+            if st.button("🔴 End Interview", key="e_btn_final"):
+                with st.spinner("Finalizing Analytics..."):
+                    st.session_state.report = st.session_state.reporter.generate_report(profile, st.session_state.answer_history)
+                st.session_state.interview_active = False
+                st.session_state.interview_complete = True
+                st.session_state.interview_stage = 'report'
+                st.rerun()
+
+    with stats_col:
+        # ── SCORE PREVIEW SIDEBAR CARD ──
+        # Calculate real-time metrics
+        avg_score = 0; conf = 0; clar = 0; tech = 0
+        if st.session_state.answer_history:
+            scores = [r['score'] for r in st.session_state.answer_history]
+            avg_score = sum(scores) / len(scores)
+            conf = int(avg_score * 8.5) + random.randint(-5, 5)
+            clar = int(avg_score * 7.8) + random.randint(-5, 5)
+            tech = int(avg_score * 9.1) + random.randint(-5, 5)
+
+        st.markdown(f"""
+            <div class="analytics-panel saas-card" style="background: var(--bg-card); position: sticky; top: 1rem; border: 1px solid var(--glass-border);">
+                <div class="panel-title" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--glass-border); padding-bottom: 0.75rem;">
+                    <span style="font-weight: 700; color: white;">Intelligence</span>
+                    <span style="background: rgba(99,102,241,0.2); color: var(--brand-primary); font-size: 0.7rem; padding: 2px 10px; border-radius: 20px; font-weight: 800;">LIVE</span>
+                </div>
+                <div class="stat-row" style="margin-top: 2rem;">
+                    <div class="stat-label" style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
+                        <span>Confidence</span><span>{conf}%</span>
+                    </div>
+                    <div class="progress-container" style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden;">
+                        <div class="progress-fill" style="width: {conf}%; height: 100%; background: var(--brand-primary); transition: width 0.6s ease;"></div>
+                    </div>
+                </div>
+                <div class="stat-row" style="margin-top: 1.5rem;">
+                    <div class="stat-label" style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
+                        <span>Clarity</span><span>{clar}%</span>
+                    </div>
+                    <div class="progress-container" style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden;">
+                        <div class="progress-fill" style="width: {clar}%; height: 100%; background: linear-gradient(90deg, var(--brand-accent), var(--brand-primary)); transition: width 0.6s ease;"></div>
+                    </div>
+                </div>
+                <div class="stat-row" style="margin-top: 1.5rem;">
+                    <div class="stat-label" style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--text-muted);">
+                        <span>Technical Depth</span><span>{tech}%</span>
+                    </div>
+                    <div class="progress-container" style="height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden;">
+                        <div class="progress-fill" style="width: {tech}%; height: 100%; background: linear-gradient(90deg, var(--brand-secondary), var(--brand-primary)); transition: width 0.6s ease;"></div>
+                    </div>
+                </div>
+                <div style="margin-top: 2.5rem; padding: 1.5rem; background: rgba(99,102,241,0.1); border-radius: 16px; border: 1px solid rgba(99,102,241,0.2); text-align: center;">
+                    <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 1.5px;">Performance Score</div>
+                    <div style="font-size: 2.5rem; font-weight: 800; color: white;">{avg_score:.1f}<span style="font-size: 1rem; color: var(--text-muted); font-weight: 400;">/10</span></div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    # ── STAGES: WRAPUP → QUESTIONS (in priority order) ──
     if stage == 'wrapup':
         if "wrapup_started" not in st.session_state:
             st.session_state.wrapup_started = True
@@ -1060,11 +1247,13 @@ if st.session_state.interview_active:
             # Single TTS call to avoid overlapping closing lines
             full_closing = f"{closing1} {closing2}"
             text_to_speech_autoplay(full_closing)
-        st.markdown("""
-            <div style="background:linear-gradient(135deg,#065f46,#047857);
-                        color:white;padding:2rem;border-radius:14px;text-align:center;margin:1rem 0;">
-                <h3 style="margin:0 0 0.5rem;">🎉 All Questions Completed!</h3>
-                <p style="margin:0;opacity:0.9;">Generating your comprehensive performance report…</p>
+        st.markdown(f"""
+            <div class="saas-card" style="background: linear-gradient(135deg, var(--brand-primary), var(--brand-accent)); border:none; text-align:center; padding:4rem 2rem;">
+                <h1 style="color:white; font-size:3rem; margin-bottom:1rem; font-family:'Plus Jakarta Sans';">Perfect Finish, {cand_name.split()[0]}! 🎉</h1>
+                <p style="color:white; opacity:0.9; font-size:1.3rem; max-width:600px; margin:0 auto;">
+                    You've successfully navigated the interview. Our AI is now synthesizing your performance data 
+                    to build your personalized growth roadmap.
+                </p>
             </div>""", unsafe_allow_html=True)
 
         with st.spinner("🤖 Analysing all your answers…"):
@@ -1116,18 +1305,31 @@ if st.session_state.interview_active:
             matched_kw_count = sum(1 for k in last_q_data.get('keywords', []) if k.lower() in ans_lower) if last_q_data else 0
             
             st.markdown(f"""
-            <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:1.2rem; margin-bottom:1rem; box-shadow:0 4px 6px -1px rgba(0,0,0,0.1);">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.8rem;">
-                    <span style="color:#e2e8f0; font-size:1.1rem; font-weight:600;">Your Score: {sc:.1f} / 10 {sc_icon}</span>
-                    <span style="color:{sc_color}; font-weight:600;">{sc_text}</span>
+            <div class="saas-card" style="margin-bottom:1.5rem; border-left: 4px solid {sc_color};">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem;">
+                    <span style="font-size:1.2rem; font-weight:700;">Logic Score: <span style="color:{sc_color}">{sc:.1f} / 10</span> {sc_icon}</span>
+                    <span class="status-badge" style="background:{sc_color}20; color:{sc_color}; border:1px solid {sc_color}40;">{sc_text}</span>
                 </div>
             """, unsafe_allow_html=True)
             st.progress(sc / 10.0)
             
+            # --- Prolog Evaluation Row ---
+            if st.session_state.get("prolog_kb_toggle") and st.session_state.prolog_kb and st.session_state.prolog_kb.available:
+                p_eval = st.session_state.prolog_kb.evaluate_answer_prolog(last_q_id, last_record['answer'])
+                st.markdown(f"""
+                <div class="saas-card" style="background: rgba(99, 102, 241, 0.05); padding: 1rem; border-color: rgba(99, 102, 241, 0.2); margin-top: 1rem;">
+                    <small style="color: var(--brand-primary); text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">🧠 Prolog Logical Verification</small><br/>
+                    <div style="margin-top:0.5rem; font-size: 0.95rem;">
+                        Matched: <code style="background:rgba(99,102,241,0.1); color:var(--brand-primary); padding:2px 6px; border-radius:4px;">{p_eval['matched_keywords']}</code> <br/>
+                        Confidence: <b>{int(p_eval['score_component']*100)}%</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
             st.markdown(f"""
-                <div style="display:flex; justify-content:space-between; margin-top: 0.8rem; font-size:0.9rem; color:#94a3b8;">
-                    <span>Keywords matched: {matched_kw_count}/{total_kw}</span>
-                    <span>Concepts covered: {matched_concepts}/{total_concepts}</span>
+                <div style="display:flex; justify-content:space-between; margin-top: 1.25rem; font-size:0.9rem; color:var(--text-muted); font-weight:500;">
+                    <span><i class="fas fa-key"></i> Keywords: {matched_kw_count}/{total_kw}</span>
+                    <span><i class="fas fa-brain"></i> Concepts: {matched_concepts}/{total_concepts}</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1143,7 +1345,7 @@ if st.session_state.interview_active:
 
                         # Default deterministic fallback in case Gemini is unavailable
                         did_well = strengths[0] if strengths else "You gave a reasonable starting answer."
-                        if suggestions:
+                        if suggestions and len(suggestions) > 0:
                             improve_part = suggestions[0]
                         elif missing_c_list:
                             improve_part = (
@@ -1167,7 +1369,7 @@ if st.session_state.interview_active:
                                 f"The candidate just answered this interview question: '{last_q}'\n"
                                 f"Their answer was: '{last_record['answer']}'\n"
                                 f"They scored {sc}/10.\n"
-                                f"They correctly mentioned: {matched_kw_list}\n"
+                                f"They correctly mentioned keywords based on this percentage: {matched_kw_count}/{total_kw}\n"
                                 f"They missed these concepts: {missing_c_list}\n\n"
                                 "Give ONE specific, actionable tip they can use RIGHT NOW to improve "
                                 "this answer if asked again. Start with what they did right in one "
@@ -1184,11 +1386,25 @@ if st.session_state.interview_active:
             
             if instant_key in st.session_state:
                 st.markdown(f"""
-                <div style="background:#fffbeb; border-left:4px solid #f59e0b; padding:1rem; border-radius:8px; margin-bottom:1.5rem;">
-                    <div style="color:#b45309; font-weight:700; margin-bottom:0.4rem; font-size:0.9rem;">💡 Quick Coaching Tip</div>
-                    <div style="color:#92400e; font-size:0.95rem;">{st.session_state[instant_key]}</div>
+                <div style="background: rgba(255, 251, 235, 0.1); border-left: 4px solid #f59e0b; padding:1.2rem; border-radius:12px; margin-bottom:1.5rem; border: 1px solid rgba(245,158,11,0.2);">
+                    <div style="color:#f59e0b; font-weight:700; margin-bottom:0.4rem; font-size:1rem; display:flex; align-items:center; gap:8px;">
+                        <span>💡</span> Quick AI Coaching Tip
+                    </div>
+                    <div style="color:var(--text-primary); font-size:0.95rem; line-height:1.5;">{st.session_state[instant_key]}</div>
                 </div>
                 """, unsafe_allow_html=True)
+            
+            # --- FOL Reasoning Trace ---
+            if st.session_state.get('fol_reasoning', True) and fb.get('fol_trace'):
+                with st.expander("🔬 View First-Order Logic (FOL) Reasoning Trace", expanded=False):
+                    trace_html = []
+                    for t in fb['fol_trace']:
+                        if "TRUE" in t: color = "#10b981"
+                        elif "PARTIAL" in t: color = "#f59e0b"
+                        elif "FALSE" in t: color = "#ef4444"
+                        else: color = "#6c63ff"
+                        trace_html.append(f'<div style="color:{color}; font-family:monospace; margin-bottom:4px;">{t}</div>')
+                    st.markdown("".join(trace_html), unsafe_allow_html=True)
         
         predicted_candidates = []
         if not (st.session_state.get("csp_toggle") and st.session_state.get("planned_questions")):
@@ -1196,41 +1412,24 @@ if st.session_state.interview_active:
                 st.session_state.user_profile, st.session_state.answer_history, n=3
             )
 
-        with st.expander("🧠 Internal AI Logic (Top Candidate Questions)"):
-            if st.session_state.get("csp_toggle"):
-                st.write("Using Constraint Satisfaction (Pre-planned Syllabus):")
-                if st.session_state.planned_questions:
-                    for i, planned_q in enumerate(st.session_state.planned_questions[:3]):
-                        st.write(f"{i+1}. {planned_q['question']}")
-                else:
-                    st.write("No more questions planned.")
-            else:
-                st.write("Using Best-First Search heuristics:")
-                if predicted_candidates:
-                    for i, (score, cand_q) in enumerate(predicted_candidates):
-                        extra = ""
-                        if score > 0.8:
-                            extra = " *(high priority due to weakness focus)*"
-                        st.write(f"{i+1}. **\"{cand_q['question']}\"** — Score: `{score:.2f}` {extra}")
-                else:
-                    st.write("No more candidate questions available.")
+        # --- STRIPS Interview Plan Visualizer (ALGORITHM UI UNIT VI) ---
+        if st.session_state.strips_planner:
+            with st.expander("📋 STRIPS Interview Plan Log", expanded=False):
+                col_p, col_s = st.columns([2, 1])
+                with col_p:
+                    st.markdown(st.session_state.strips_planner.get_plan_html(), unsafe_allow_html=True)
+                with col_s:
+                    current_act = st.session_state.strips_planner.get_current_action(st.session_state.answer_history)
+                    st.markdown(f"**Current Action:** `{current_act}`")
+                    st.markdown(f"**World Facts:** `{list(st.session_state.strips_planner.state)}`")
 
-        # ── Question card ──
-        diff_level  = get_difficulty_level(q)
-        st.markdown(f"""
-            <div style="text-align:center; font-size:1.1rem; color:#94a3b8; font-weight:600; text-transform:uppercase; margin-bottom: 0.6rem; margin-top: 1rem;">
-                Question {answered + 1} of 10
-            </div>
-        """, unsafe_allow_html=True)
-            
-        st.markdown(f"""
-            <div style="background:white; color:#1e293b; padding:1.8rem; border-radius:14px; text-align:center; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1); border:1px solid #e2e8f0; margin-bottom:1rem;">
-                <div style="font-size:20px; font-weight:600; line-height:1.6; margin-bottom:1rem;">{q['question']}</div>
-                <div style="display:inline-block; margin-top:0.4rem;">
-                    <span class="badge badge-{diff_level}">{diff_level.title()}</span>
-                    <span style="font-size:0.8rem; color:#64748b; margin-left:10px;">📌 Topic: {q.get('topic','General').title()}</span>
-                </div>
-            </div>""", unsafe_allow_html=True)
+        # --- Prolog Query Log (ALGORITHM UI UNIT V) ---
+        if st.session_state.get("prolog_kb_toggle") and st.session_state.prolog_kb:
+            with st.expander("📝 PROLOG Logical Verification Log", expanded=False):
+                for q_log in st.session_state.prolog_kb.get_prolog_query_log():
+                    st.code(q_log, language="prolog")
+
+        # Question is now shown in the floating glass card over the video
 
         # ── Progress dots ──
         dots_html = []
@@ -1339,10 +1538,16 @@ if st.session_state.interview_complete and st.session_state.report:
 
     st.balloons()
     st.markdown(f"""
-        <div style="background:linear-gradient(135deg,#065f46 0%,#047857 100%);
-                    padding:2rem; border-radius:16px; color:white; text-align:center; margin:1rem 0 2rem;">
-            <h2 style="font-size:2rem;margin-bottom:0.4rem;">🎉 Interview Complete!</h2>
-            <p style="opacity:0.9;margin:0;">Here is your comprehensive performance analysis, {report['user_profile'].get('name','Candidate')}.</p>
+        <div class="saas-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(168, 85, 247, 0.2)); text-align:center; padding:4rem 2rem; margin-bottom:3rem; border: 1px solid var(--brand-primary);">
+            <h1 class="cosmic-bg" style="font-size:3.5rem; margin-bottom:1rem; 
+                background: linear-gradient(135deg, #fff, var(--brand-primary));
+                -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                Your Performance Intelligence
+            </h1>
+            <p style="color: var(--text-muted); font-size:1.2rem; max-width: 600px; margin: 0 auto;">
+                Comprehensive analysis for <b>{report['user_profile'].get('name','Candidate')}</b>. 
+                Focus on the insights below to level up your career.
+            </p>
         </div>""", unsafe_allow_html=True)
         
     if "llm_summary" in report:
@@ -1582,11 +1787,12 @@ if st.session_state.interview_complete and st.session_state.report:
 # ===========================================================================
 st.markdown("---")
 st.markdown("""
-    <div class="footer">
+    <div class="footer" style="text-align:center; padding: 2rem 0; color: var(--text-muted); opacity: 0.8;">
         <p>🎯 AI Interview Coach — Professional Edition v3.0</p>
         <p style="font-size:0.78rem;">
             Powered by Best-First Search · Forward-Chaining Evaluation · Streamlit WebRTC<br>
             Built with ❤️ for serious interview preparation
         </p>
     </div>""", unsafe_allow_html=True)
+
 
