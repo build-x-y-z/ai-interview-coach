@@ -13,42 +13,44 @@ from typing import List, Dict, Any, Optional
 import os
 from dotenv import load_dotenv
 
-import google.generativeai as genai
+from google import genai
 
 import time
 
-# Load env variables and configure Gemini
 load_dotenv()
-
 gemini_api_key = os.getenv("GEMINI_API_KEY")
+
+client = None
 if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
+    client = genai.Client(api_key=gemini_api_key)
 
 GEMINI_MODEL = "gemini-1.5-flash"
 GEMINI_FALLBACK = "gemini-1.5-flash"
 
 def call_gemini(prompt: str, feature_name: str = "Unknown") -> Optional[str]:
     """
-    Safely calls Gemini API. Returns None if feature is off, 
-    API key is missing, or an error occurs.
+    Safely calls Gemini API using the new google-genai SDK.
     """
-    # Always enabled for skill-based interviewing
-    if not gemini_api_key:
+    if not client:
         return None
         
-    # Rate limit protection (Feature 2)
+    # Rate limit protection
     time.sleep(0.5)
         
     try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt
+        )
         print(f"[Gemini] Called successfully | Model: {GEMINI_MODEL} | Feature: {feature_name}")
         return response.text.strip()
     except Exception as e:
         print(f"[Gemini] {GEMINI_MODEL} failed for {feature_name}: {e}. Trying fallback...")
         try:
-            model = genai.GenerativeModel(GEMINI_FALLBACK)
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model=GEMINI_FALLBACK,
+                contents=prompt
+            )
             print(f"[Gemini] Called successfully | Model: {GEMINI_FALLBACK} | Feature: {feature_name}")
             return response.text.strip()
         except Exception as fallback_e:
