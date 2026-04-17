@@ -33,6 +33,7 @@ from question_selector import QuestionSelector
 from answer_evaluator import AnswerEvaluator
 from performance_report import PerformanceReport
 from interview_planner_csp import ConstraintSatisfactionPlanner
+from mysql_store import MySQLStore
 
 
 # Utility helpers (TTS, STT, animations)
@@ -316,6 +317,14 @@ def init_session_state():
         st.session_state.cam_off            = False
         # ── user profile ──
         st.session_state.user_profile       = {}
+        # ── auth + persistence ──
+        st.session_state.mysql_store        = MySQLStore()
+        ok, msg = st.session_state.mysql_store.initialize()
+        st.session_state.db_ready           = ok
+        st.session_state.db_message         = msg
+        st.session_state.authenticated      = False
+        st.session_state.current_user       = None
+        st.session_state.current_session_id = None
 
 init_session_state()
 
@@ -352,6 +361,7 @@ def reset_interview():
     st.session_state.intro_message       = None
     st.session_state.wrapup_started      = False
     st.session_state.planned_questions   = []
+    st.session_state.current_session_id  = None
 
     # Clear transient per-question tips and TTS cache entries.
     for key in list(st.session_state.keys()):
@@ -388,6 +398,10 @@ def process_answer(answer_text: str):
     }
     st.session_state.answer_history.append(record)
     st.session_state.question_history.append(q['id'])
+    if st.session_state.db_ready and st.session_state.current_session_id:
+        st.session_state.mysql_store.save_answer_record(
+            st.session_state.current_session_id, record
+        )
 
     st.session_state.selector.update_performance(
         q['id'], feedback["score"], q.get("topic", "general")
@@ -409,6 +423,19 @@ def process_answer(answer_text: str):
         # All questions done → wrapup stage
         st.session_state.interview_stage = 'wrapup'
         st.session_state.current_question = None
+
+
+def persist_completed_interview():
+    """Persist final report for the current interview session."""
+    if (
+        st.session_state.db_ready
+        and st.session_state.current_session_id
+        and st.session_state.report
+    ):
+        st.session_state.mysql_store.complete_interview_session(
+            st.session_state.current_session_id,
+            st.session_state.report
+        )
 
 # ===========================================================================
 # ██████████████████████  SIDEBAR  ██████████████████████
@@ -432,71 +459,159 @@ with st.sidebar:
 
     st.markdown("---")
 
+    # ── Authentication (MySQL-backed) ──
+    with st.expander("🔐 Authentication", expanded=not st.session_state.authenticated):
+        if st.session_state.db_ready:
+            st.caption("Connected to MySQL")
+        else:
+            st.error(f"MySQL unavailable: {st.session_state.db_message}")
+            st.caption("Set MYSQL_* values in .env and restart.")
+
+        if st.session_state.authenticated and st.session_state.current_user:
+            st.success(
+                f"Signed in as {st.session_state.current_user.get('name')} "
+                f"({st.session_state.current_user.get('email')})"
+            )
+            if st.button("🚪 Logout", use_container_width=True):
+                reset_interview()
+                st.session_state.authenticated = False
+                st.session_state.current_user = None
+                st.session_state.user_profile = {}
+                st.rerun()
+        else:
+            login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
+
+            with login_tab:
+                with st.form("login_form", clear_on_submit=False):
+                    login_email = st.text_input("Email", key="login_email")
+                    login_password = st.text_input("Password", type="password", key="login_password")
+                    login_submit = st.form_submit_button("Login", use_container_width=True)
+                    if login_submit:
+                        if not st.session_state.db_ready:
+                            st.error("Database not ready. Check MYSQL configuration.")
+                        else:
+                            ok, user, msg = st.session_state.mysql_store.authenticate_user(
+                                login_email, login_password
+                            )
+                            if ok and user:
+                                st.session_state.authenticated = True
+                                st.session_state.current_user = user
+                                db_profile = st.session_state.mysql_store.get_profile(user["id"])
+                                if db_profile:
+                                    st.session_state.user_profile = db_profile
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+
+            with signup_tab:
+                with st.form("signup_form", clear_on_submit=False):
+                    signup_name = st.text_input("Full Name", key="signup_name")
+                    signup_email = st.text_input("Email", key="signup_email")
+                    signup_password = st.text_input("Password", type="password", key="signup_password")
+                    signup_submit = st.form_submit_button("Create Account", use_container_width=True)
+                    if signup_submit:
+                        if len(signup_password) < 6:
+                            st.error("Password must be at least 6 characters.")
+                        elif not st.session_state.db_ready:
+                            st.error("Database not ready. Check MYSQL configuration.")
+                        else:
+                            ok, msg = st.session_state.mysql_store.create_user(
+                                signup_name, signup_email, signup_password
+                            )
+                            if ok:
+                                st.success(msg + " Please login.")
+                            else:
+                                st.error(msg)
+
+    if st.session_state.authenticated and st.session_state.db_ready and st.session_state.current_user:
+        recent_sessions = st.session_state.mysql_store.get_recent_interviews(
+            st.session_state.current_user["id"], limit=3
+        )
+        if recent_sessions:
+            with st.expander("🕘 Recent Interview Records", expanded=False):
+                for sess in recent_sessions:
+                    st.write(
+                        f"Session #{sess['id']} | Score: {sess.get('overall_score') or '-'} "
+                        f"| Questions: {sess.get('total_questions', 0)} "
+                        f"| Level: {sess.get('performance_level') or '-'}"
+                    )
+
     # ── Profile form ──
     # ── Profile form ──
 
     with st.expander("👤 Your Profile", expanded=not st.session_state.user_profile.get("profile_complete", False)):
-        with st.form("profile_form", clear_on_submit=False):
-            st.markdown("##### 📋 Personal Information")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                name = st.text_input("Full Name *", value=st.session_state.user_profile.get("name",""),
-                                     placeholder="Jane Doe")
-            with col_b:
-                email = st.text_input("Email *", value=st.session_state.user_profile.get("email",""),
-                                      placeholder="jane@example.com")
+        if not st.session_state.authenticated:
+            st.info("Login first to manage your profile.")
+        elif not st.session_state.db_ready:
+            st.warning("MySQL is not connected. Profile cannot be saved.")
+        else:
+            with st.form("profile_form", clear_on_submit=False):
+                st.markdown("##### 📋 Personal Information")
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    name = st.text_input("Full Name *", value=st.session_state.user_profile.get("name",""),
+                                        placeholder="Jane Doe")
+                with col_b:
+                    email = st.text_input("Email *", value=st.session_state.user_profile.get("email",""),
+                                        placeholder="jane@example.com")
 
-            st.markdown("---")
-            st.markdown("##### 🎯 Career Goals")
+                st.markdown("---")
+                st.markdown("##### 🎯 Career Goals")
 
-            target_role = st.selectbox("Target Role *", [
-                "Software Engineer", "Data Scientist", "Backend Developer",
-                "Frontend Developer", "DevOps Engineer", "Data Analyst",
-                "Machine Learning Engineer", "Full Stack Developer",
-                "Cloud Architect", "Product Manager", "QA Engineer"
-            ])
+                target_role = st.selectbox("Target Role *", [
+                    "Software Engineer", "Data Scientist", "Backend Developer",
+                    "Frontend Developer", "DevOps Engineer", "Data Analyst",
+                    "Machine Learning Engineer", "Full Stack Developer",
+                    "Cloud Architect", "Product Manager", "QA Engineer"
+                ])
 
-            experience = st.radio("Experience Level *", [
-                "Entry Level (0-2 years)", "Mid Level (3-5 years)",
-                "Senior Level (5+ years)", "Lead/Manager (8+ years)"
-            ], index=0, horizontal=False)
+                experience = st.radio("Experience Level *", [
+                    "Entry Level (0-2 years)", "Mid Level (3-5 years)",
+                    "Senior Level (5+ years)", "Lead/Manager (8+ years)"
+                ], index=0, horizontal=False)
 
-            st.markdown("##### 💻 Skills")
-            col_c, col_d = st.columns(2)
-            with col_c:
-                langs = st.multiselect("Languages", ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"],
-                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"]])
-                dbs   = st.multiselect("Databases",  ["SQL","MongoDB","PostgreSQL","MySQL","Redis"],
-                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["SQL","MongoDB","PostgreSQL","MySQL","Redis"]])
-            with col_d:
-                fws   = st.multiselect("Frameworks", ["React","Django","Flask","Spring","Angular","TensorFlow"],
-                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["React","Django","Flask","Spring","Angular","TensorFlow"]])
-                tools = st.multiselect("Tools",      ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"],
-                                       default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"]])
+                st.markdown("##### 💻 Skills")
+                col_c, col_d = st.columns(2)
+                with col_c:
+                    langs = st.multiselect("Languages", ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"],
+                                        default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["Python","Java","JavaScript","C++","C#","Go","Rust","PHP"]])
+                    dbs   = st.multiselect("Databases",  ["SQL","MongoDB","PostgreSQL","MySQL","Redis"],
+                                        default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["SQL","MongoDB","PostgreSQL","MySQL","Redis"]])
+                with col_d:
+                    fws   = st.multiselect("Frameworks", ["React","Django","Flask","Spring","Angular","TensorFlow"],
+                                        default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["React","Django","Flask","Spring","Angular","TensorFlow"]])
+                    tools = st.multiselect("Tools",      ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"],
+                                        default=[s for s in st.session_state.user_profile.get("skills",[]) if s in ["AWS","Docker","Kubernetes","Git","Linux","Jenkins"]])
 
-            all_skills = langs + dbs + fws + tools
+                all_skills = langs + dbs + fws + tools
 
-            _, col_mid, _ = st.columns([1,2,1])
-            with col_mid:
-                submitted = st.form_submit_button("🚀 SAVE PROFILE", use_container_width=True, type="primary")
+                _, col_mid, _ = st.columns([1,2,1])
+                with col_mid:
+                    submitted = st.form_submit_button("🚀 SAVE PROFILE", use_container_width=True, type="primary")
 
-            if submitted:
-                errors = []
-                if not name:  errors.append("Name is required")
-                if not email or "@" not in email: errors.append("Valid email required")
-                if len(all_skills) < 1: errors.append("Select at least 1 skill")
-                if errors:
-                    for e in errors: st.error(f"❌ {e}")
-                else:
-                    st.session_state.user_profile = {
-                        "name": name, "email": email,
-                        "target_role": target_role,
-                        "experience_level": experience.split("(")[0].strip().lower(),
-                        "skills": all_skills, "profile_complete": True,
-                        "registration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    }
-                    st.success("✅ Profile saved! Click Start Interview below.")
-                    st.balloons()
+                if submitted:
+                    errors = []
+                    if not name:  errors.append("Name is required")
+                    if not email or "@" not in email: errors.append("Valid email required")
+                    if len(all_skills) < 1: errors.append("Select at least 1 skill")
+                    if errors:
+                        for e in errors: st.error(f"❌ {e}")
+                    else:
+                        st.session_state.user_profile = {
+                            "name": name, "email": email,
+                            "target_role": target_role,
+                            "experience_level": experience.split("(")[0].strip().lower(),
+                            "skills": all_skills, "profile_complete": True,
+                            "registration_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                        ok, msg = st.session_state.mysql_store.save_profile(
+                            st.session_state.current_user["id"], st.session_state.user_profile
+                        )
+                        if not ok:
+                            st.error(msg)
+                        st.success("✅ Profile saved! Click Start Interview below.")
+                        st.balloons()
 
     # ── Voice Selector ──
     with st.expander("🎙️ Voice Settings", expanded=False):
@@ -522,7 +637,9 @@ with st.sidebar:
             st.checkbox("⚡ Enable AI-Enhanced Mode (Gemini)", value=False, key="ai_enhanced_mode")
             
             if st.button("🚀 START NEW INTERVIEW", use_container_width=True):
-                if st.session_state.user_profile:
+                if not st.session_state.authenticated:
+                    st.warning("⚠️ Please login first.")
+                elif st.session_state.user_profile:
                     reset_interview()
                     
                     if st.session_state.get("csp_toggle"):
@@ -545,6 +662,10 @@ with st.sidebar:
                     st.session_state.interview_active    = True
                     st.session_state.interview_stage     = 'intro'
                     st.session_state.interview_start_time = datetime.now()
+                    if st.session_state.db_ready and st.session_state.current_user:
+                        st.session_state.current_session_id = st.session_state.mysql_store.create_interview_session(
+                            st.session_state.current_user["id"], st.session_state.interview_start_time
+                        )
                     st.rerun()
                 else:
                     st.warning("⚠️ Please complete and save your profile first!")
@@ -555,6 +676,7 @@ with st.sidebar:
                     st.session_state.report = st.session_state.reporter.generate_report(
                         st.session_state.user_profile, st.session_state.answer_history
                     )
+                persist_completed_interview()
                 st.session_state.interview_active   = False
                 st.session_state.interview_complete = True
                 st.session_state.interview_stage    = 'report'
@@ -632,6 +754,10 @@ with hcol:
 
 st.markdown("---")
 
+if not st.session_state.authenticated:
+    st.info("🔐 Please login from the sidebar to use the interview room and save records.")
+    st.stop()
+
 # ===========================================================================
 # ██  STAGE 0: WELCOME (idle)  ██
 # ===========================================================================
@@ -690,6 +816,9 @@ if not st.session_state.interview_active and not st.session_state.interview_comp
         _, sc, _ = st.columns([1, 2, 1])
         with sc:
             if st.button("🚀 START YOUR INTERVIEW", use_container_width=True):
+                if not st.session_state.authenticated:
+                    st.warning("Please login first.")
+                    st.stop()
                 reset_interview()
                 
                 if st.session_state.get("csp_toggle"):
@@ -712,6 +841,10 @@ if not st.session_state.interview_active and not st.session_state.interview_comp
                 st.session_state.interview_active    = True
                 st.session_state.interview_stage     = 'intro'
                 st.session_state.interview_start_time = datetime.now()
+                if st.session_state.db_ready and st.session_state.current_user:
+                    st.session_state.current_session_id = st.session_state.mysql_store.create_interview_session(
+                        st.session_state.current_user["id"], st.session_state.interview_start_time
+                    )
                 st.rerun()
     else:
         st.info("👈 **Complete your profile in the sidebar to unlock the Start button.**")
@@ -1023,6 +1156,7 @@ if st.session_state.interview_active:
                 st.session_state.report = st.session_state.reporter.generate_report(
                     profile, st.session_state.answer_history
                 )
+            persist_completed_interview()
             st.session_state.interview_active   = False
             st.session_state.interview_complete = True
             st.session_state.interview_stage    = 'report'
@@ -1081,6 +1215,7 @@ if st.session_state.interview_active:
             st.session_state.report = st.session_state.reporter.generate_report(
                 profile, st.session_state.answer_history
             )
+        persist_completed_interview()
         st.session_state.interview_active   = False
         st.session_state.interview_complete = True
         st.session_state.interview_stage    = 'report'

@@ -7,4 +7,5 @@ gTTS==2.5.4
 edge-tts==6.1.9
 google-generativeai==0.3.0
 python-dotenv==1.0.0
+mysql-connector-python==9.0.0
 
