@@ -196,7 +196,6 @@ class AnswerEvaluator:
         for indicator in example_indicators:
             if re.search(indicator, text.lower()):
                 return True
-            return False
         
         # Check for code-like patterns
         code_patterns = [

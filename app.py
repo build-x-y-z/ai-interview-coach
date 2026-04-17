@@ -349,6 +349,15 @@ def reset_interview():
     st.session_state.interview_start_time = None
     st.session_state.mic_muted           = False
     st.session_state.cam_off             = False
+    st.session_state.intro_message       = None
+    st.session_state.wrapup_started      = False
+    st.session_state.planned_questions   = []
+
+    # Clear transient per-question tips and TTS cache entries.
+    for key in list(st.session_state.keys()):
+        if str(key).startswith("instant_tip_") or str(key).startswith("tts_cache_"):
+            st.session_state.pop(key, None)
+
     # Reset selector history so questions restart cleanly
     st.session_state.selector.reset_history()
 
@@ -1140,6 +1149,10 @@ if st.session_state.interview_active:
                         strengths = fb.get("strengths") or []
                         suggestions = fb.get("suggestions") or []
                         missing_c_list = fb.get("missing_concepts") or []
+                        matched_kw_list = [
+                            k for k in (last_q_data.get("keywords", []) if last_q_data else [])
+                            if k.lower() in ans_lower
+                        ]
 
                         # Default deterministic fallback in case Gemini is unavailable
                         did_well = strengths[0] if strengths else "You gave a reasonable starting answer."
@@ -1167,7 +1180,7 @@ if st.session_state.interview_active:
                                 f"The candidate just answered this interview question: '{last_q}'\n"
                                 f"Their answer was: '{last_record['answer']}'\n"
                                 f"They scored {sc}/10.\n"
-                                f"They correctly mentioned: {matched_kw_list}\n"
+                                f"They correctly mentioned: {', '.join(matched_kw_list) if matched_kw_list else 'None'}\n"
                                 f"They missed these concepts: {missing_c_list}\n\n"
                                 "Give ONE specific, actionable tip they can use RIGHT NOW to improve "
                                 "this answer if asked again. Start with what they did right in one "
