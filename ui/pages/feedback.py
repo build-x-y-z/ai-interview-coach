@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import json
+import html as _html
 from datetime import datetime
 from ui.components.metrics import render_metric_card, render_difficulty_badge
 from ui.components.charts import plot_score_trend, plot_topic_performance, plot_difficulty_breakdown
@@ -352,42 +353,47 @@ def render():
             shadow_color = _hex_to_rgba(p_color, 0.25)
             badge_bg = _hex_to_rgba(p_color, 0.08)
             badge_border = _hex_to_rgba(p_color, 0.19)
-            st.markdown(f"""
-                <div style="display:flex; gap:1rem; margin-bottom:0;">
-                    <!-- Timeline line -->
-                    <div style="display:flex; flex-direction:column; align-items:center; min-width:40px;">
-                        <div style="width:36px; height:36px; border-radius:50%; background:{p_color};
-                                    display:flex; align-items:center; justify-content:center; font-size:0.85rem; color:white; font-weight:700;
-                                    box-shadow:0 4px 12px {shadow_color};">
-                            {idx + 1}
-                        </div>
-                        {'<div style="width:2px; flex:1; background:linear-gradient(to bottom, ' + p_color + ', var(--card-border)); margin:4px 0;"></div>' if not is_last else ''}
-                    </div>
-                    <!-- Card -->
-                    <div style="background:var(--card-bg); border:1px solid var(--card-border); border-left:4px solid {p_color};
-                                padding:1.2rem 1.5rem; border-radius:12px; flex:1; margin-bottom:1rem;
-                                box-shadow:0 2px 8px rgba(0,0,0,0.04);">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-                            <span style="color:var(--text-main); font-weight:600; font-size:1rem;">
-                                {p_icon} {phase.get('phase','').title()} Phase
-                            </span>
-                            <span style="background:{badge_bg}; color:{p_color}; border:1px solid {badge_border};
-                                         padding:3px 12px; border-radius:20px; font-size:0.72rem; font-weight:600; text-transform:uppercase;">
-                                {phase.get('priority','').title()} Priority
-                            </span>
-                        </div>
-                        <div style="color:var(--text-main); font-size:0.95rem; margin-bottom:0.3rem;">
-                            <strong>Focus:</strong> {phase.get('focus','').title()}
-                        </div>
-                        <div style="color:var(--text-main); font-size:0.95rem; margin-bottom:0.3rem;">
-                            <strong>Goal:</strong> {phase.get('goal','')}
-                        </div>
-                        <div style="color:var(--text-muted); font-size:0.83rem; margin-top:0.5rem;">
-                            ⏱ Estimated time: {phase.get('estimated_time','')}
-                        </div>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
+
+            # Escape data to prevent HTML breakage
+            phase_title = _html.escape(phase.get('phase', '').title())
+            priority_title = _html.escape(phase.get('priority', '').title())
+            focus_title = _html.escape(phase.get('focus', '').title())
+            goal_text = _html.escape(phase.get('goal', ''))
+            time_text = _html.escape(phase.get('estimated_time', ''))
+
+            connector = ''
+            if not is_last:
+                connector = f'<div style="width:2px;flex:1;background:linear-gradient(to bottom,{p_color},var(--card-border));margin:4px 0;"></div>'
+
+            # Build the card as a single compact HTML string (no HTML comments)
+            card_html = (
+                f'<div style="display:flex;gap:1rem;margin-bottom:0;">'
+                f'<div style="display:flex;flex-direction:column;align-items:center;min-width:40px;">'
+                f'<div style="width:36px;height:36px;border-radius:50%;background:{p_color};'
+                f'display:flex;align-items:center;justify-content:center;font-size:0.85rem;color:white;font-weight:700;'
+                f'box-shadow:0 4px 12px {shadow_color};">{idx + 1}</div>'
+                f'{connector}'
+                f'</div>'
+                f'<div style="background:var(--card-bg);border:1px solid var(--card-border);border-left:4px solid {p_color};'
+                f'padding:1.2rem 1.5rem;border-radius:12px;flex:1;margin-bottom:1rem;'
+                f'box-shadow:0 2px 8px rgba(0,0,0,0.04);">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">'
+                f'<span style="color:var(--text-main);font-weight:600;font-size:1rem;">'
+                f'{p_icon} {phase_title} Phase</span>'
+                f'<span style="background:{badge_bg};color:{p_color};border:1px solid {badge_border};'
+                f'padding:3px 12px;border-radius:20px;font-size:0.72rem;font-weight:600;text-transform:uppercase;">'
+                f'{priority_title} Priority</span>'
+                f'</div>'
+                f'<div style="color:var(--text-main);font-size:0.95rem;margin-bottom:0.3rem;">'
+                f'<strong>Focus:</strong> {focus_title}</div>'
+                f'<div style="color:var(--text-main);font-size:0.95rem;margin-bottom:0.3rem;">'
+                f'<strong>Goal:</strong> {goal_text}</div>'
+                f'<div style="color:var(--text-muted);font-size:0.83rem;margin-top:0.5rem;">'
+                f'⏱ Estimated time: {time_text}</div>'
+                f'</div>'
+                f'</div>'
+            )
+            st.markdown(card_html, unsafe_allow_html=True)
 
         # Resources section
         resources = report.get('resources', [])

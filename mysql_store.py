@@ -518,7 +518,8 @@ class MySQLStore:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
                 """
-                SELECT id, started_at, ended_at, total_questions, overall_score, performance_level
+                SELECT id, started_at, ended_at, total_questions, overall_score, performance_level,
+                       (report_json IS NOT NULL AND LENGTH(report_json) > 0) AS has_report
                 FROM interview_sessions
                 WHERE user_id=%s
                 ORDER BY started_at DESC
@@ -593,3 +594,42 @@ class MySQLStore:
             return json.loads(row["report_json"])
         except Exception:
             return None
+
+    def get_session_answers(self, session_id: int) -> List[Dict[str, Any]]:
+        """Retrieve saved answer records for a session so the feedback page
+        can render the question-by-question review."""
+        try:
+            conn = self._connect()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(
+                """
+                SELECT question_text, answer_text, topic, difficulty,
+                       score, feedback_json
+                FROM interview_answers
+                WHERE session_id=%s
+                ORDER BY id ASC
+                """,
+                (session_id,),
+            )
+            rows = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            result = []
+            for r in rows:
+                fb = {}
+                if r.get("feedback_json"):
+                    try:
+                        fb = json.loads(r["feedback_json"])
+                    except Exception:
+                        pass
+                result.append({
+                    "question": r.get("question_text", ""),
+                    "answer": r.get("answer_text", ""),
+                    "topic": r.get("topic", "general"),
+                    "difficulty": r.get("difficulty", "beginner"),
+                    "score": float(r.get("score", 0)),
+                    "feedback": fb,
+                })
+            return result
+        except Exception:
+            return []

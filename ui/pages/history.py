@@ -64,6 +64,9 @@ def render():
             if rep:
                 st.session_state.report = rep
                 st.session_state.interview_complete = True
+                # Restore answer history so the Question Review tab works
+                answers = st.session_state.mysql_store.get_session_answers(selected_id)
+                st.session_state.answer_history = answers if answers else []
                 st.session_state.current_page = 'feedback'
                 st.rerun()
             else:
