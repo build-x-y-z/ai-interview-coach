@@ -1,11 +1,7 @@
 import streamlit as st
 
 def render_global_css():
-    # If the user toggles dark mode, stream it in a container
-    theme_data = ""
-    if st.session_state.get('theme') == 'dark':
-        theme_data = "data-theme='dark'"
-
+    # Static CSS with CSS variables — light mode is the default
     st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -18,24 +14,15 @@ def render_global_css():
   --text-muted: #64748b;
   --card-bg: #ffffff;
   --card-border: #e2e8f0;
-  
+
   --success: #10b981;
   --warning: #f59e0b;
   --error: #ef4444;
-  
+
   --meet-bg: #202124;
   --meet-text: #e8eaed;
   --panel-bg: #1a1b1e;
   --panel-border: #3c4043;
-}
-
-[data-theme='dark'] {
-  --bg-color: #0f172a;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --card-bg: #1e293b;
-  --card-border: #334155;
-  --meet-bg: #16181b;
 }
 
 html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
@@ -118,17 +105,35 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
     margin: 1rem 0 2rem;
 }
 </style>
-""" + f'<div {theme_data} id="theme-manager"></div>' + """
-<script>
-    // Simple script to inject theme onto parent body to let our css variables work if needed
-    // Streamlit overrides html and body. This helps our custom classes map to data-theme if we put it on an outer wrapper.
-    if(document.getElementById('theme-manager').hasAttribute('data-theme')) {
-        document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-        document.documentElement.removeAttribute('data-theme');
-    }
-</script>
     """, unsafe_allow_html=True)
+
+    # Dark mode override — only injected when user toggles dark theme in Settings
+    if st.session_state.get('theme') == 'dark':
+        st.markdown("""
+<style>
+:root {
+  --bg-color: #0f172a;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --card-bg: #1e293b;
+  --card-border: #334155;
+  --meet-bg: #16181b;
+}
+[data-testid="stAppViewContainer"] { background-color: #0f172a !important; }
+[data-testid="stHeader"] { background-color: #0f172a !important; }
+[data-testid="stSidebar"] { background-color: #1e293b !important; }
+[data-testid="stSidebar"] [data-testid="stMarkdown"] p,
+[data-testid="stSidebar"] [data-testid="stMarkdown"] h2,
+[data-testid="stSidebar"] [data-testid="stMarkdown"] h3 { color: #f8fafc !important; }
+.stMarkdown p, .stMarkdown li, .stMarkdown h1, .stMarkdown h2,
+.stMarkdown h3, .stMarkdown h4 { color: #f8fafc !important; }
+label { color: #f8fafc !important; }
+[data-testid="stForm"] { background-color: #1e293b !important; border-color: #334155 !important; }
+input, textarea { background-color: #0f172a !important; color: #f8fafc !important; border-color: #334155 !important; }
+[data-testid="stBottomBlockContainer"] { background-color: #0f172a !important; }
+</style>
+        """, unsafe_allow_html=True)
+
 
 def inject_animations():
     from utils import get_typing_animation
@@ -151,24 +156,24 @@ def render_sidebar():
             </div>
         """, unsafe_allow_html=True)
         st.markdown("---")
-        
+
         if st.session_state.get('authenticated'):
             st.markdown("### 🧭 Navigation")
             pages = {
                 "Dashboard": "dashboard",
                 "Start Interview": "start_interview",
                 "Interview Session": "session",
-                "Performance Feedback": "feedback", 
+                "Performance Feedback": "feedback",
                 "Interview History": "history",
                 "Settings": "settings"
             }
-            
+
             # Hide some pages from sidebar if not relevant at the moment
             if not st.session_state.get("interview_active"):
                 pages.pop("Interview Session")
             if not st.session_state.get("interview_complete"):
                 pages.pop("Performance Feedback")
-            
+
             for label, page_key in pages.items():
                 is_active = st.session_state.get("current_page") == page_key
                 # Use plain streamlit buttons styled via css for sidebar items
