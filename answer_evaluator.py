@@ -1,6 +1,7 @@
 """
 Answer Evaluation System (Unit V)
 Uses FOL traces plus richer metadata-based scoring for the expanded question bank.
+Also integrates LLM-based coaching feedback when AI-enhanced mode is active.
 """
 
 from __future__ import annotations
@@ -137,7 +138,7 @@ class AnswerEvaluator:
         if not suggestions:
             suggestions.append("Push the answer one step further by adding a tradeoff or production example.")
 
-        return {
+        result = {
             "score": final_score,
             "strengths": strengths or ["You gave a reasonable starting answer."],
             "weaknesses": weaknesses,
@@ -148,6 +149,34 @@ class AnswerEvaluator:
             "feedback": f"Your answer scored {final_score}/10 based on concept coverage, clarity, and logic traces.",
             "ideal_answer": ideal_answer,
         }
+
+        # LLM-based coaching feedback (from the SaaS UI branch)
+        try:
+            import streamlit as st
+            if st.session_state.get('ai_enhanced_mode', False):
+                from utils import call_gemini
+
+                prompt = (
+                    f"You are a technical interview coach. The candidate was asked: '{question.get('question', '')}'.\n"
+                    f"They answered: '{answer_text}'.\n"
+                    f"The evaluation system detected they scored {final_score}/10.\n"
+                    f"They mentioned these correct keywords: {', '.join(matched_keywords) if matched_keywords else 'None'}.\n"
+                    f"They missed these important concepts: {', '.join(missing_concepts) if missing_concepts else 'None'}.\n"
+                    f"Write 2-3 sentences of constructive coaching feedback. Be specific, "
+                    f"encouraging, and tell them exactly what to add next time. No bullet points."
+                )
+
+                llm_feedback = call_gemini(prompt, feature_name="Feature 2: Coach Feedback")
+                if llm_feedback:
+                    result["llm_feedback"] = llm_feedback
+                else:
+                    result["llm_feedback"] = " ".join(suggestions)
+            else:
+                result["llm_feedback"] = " ".join(suggestions)
+        except Exception:
+            result["llm_feedback"] = " ".join(suggestions)
+
+        return result
 
     def _min_words_for(self, difficulty: str) -> int:
         return {"beginner": 18, "intermediate": 28, "advanced": 40}.get(str(difficulty).lower(), 20)

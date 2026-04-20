@@ -11,3 +11,5 @@ gTTS>=2.5.4
 edge-tts
 pydub>=0.25.1
 pillow>=10.0.0
+mysql-connector-python>=9.6.0
+bcrypt>=4.2.1
